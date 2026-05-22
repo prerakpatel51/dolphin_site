@@ -1,0 +1,66 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .promo-email-summary {
+    background: var(--darkened-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--body-fg);
+    margin: 16px 0 24px;
+    max-width: 860px;
+    padding: 16px;
+  }
+
+  .promo-email-summary h3 {
+    color: var(--body-fg);
+    margin-top: 0;
+  }
+
+  .promo-email-warning {
+    color: var(--body-quiet-color);
+    max-width: 860px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Send promotional email</h1>
+
+<div class="promo-email-summary">
+  <h3>Recipients</h3>
+  <p>
+    Selected source: <b>{{ source_label }}</b><br>
+    Current selected/filter recipient count: <b>{{ recipient_count }}</b><br>
+    You can add extra email addresses below before sending.
+  </p>
+  {% if select_across == "1" %}
+    <p><b>Selection mode:</b> all matching rows in the current filtered admin list.</p>
+  {% else %}
+    <p><b>Selection mode:</b> checked rows only.</p>
+  {% endif %}
+</div>
+
+<form method="post">{% csrf_token %}
+  <input type="hidden" name="action" value="{{ action_name }}">
+  <input type="hidden" name="select_across" value="{{ select_across }}">
+  {% for item in selected %}
+    <input type="hidden" name="_selected_action" value="{{ item }}">
+  {% endfor %}
+  <input type="hidden" name="apply" value="1">
+
+  <table>{{ form.as_table }}</table>
+
+  <div style="margin-top:16px">
+    <button type="submit" class="default">Send promotional email</button>
+    <a href="javascript:history.back()" style="margin-left:12px">Back</a>
+  </div>
+</form>
+
+<p class="promo-email-warning">
+  Use promotional email only for people the business is allowed to contact.
+  For production marketing, include the business identity and honor opt-out requests.
+</p>
+{% endblock %}

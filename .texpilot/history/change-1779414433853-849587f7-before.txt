@@ -1,0 +1,30 @@
+DJANGO_SECRET_KEY=yE8weq1qTK1hwgOb6NSEpiC_CdPI-sjTi9M8bT-72Bko4nRZOPDmbzeli739keQR
+DJANGO_DEBUG=1
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+DATABASE_URL=postgres://dolphin:dolphin@db:5432/dolphin
+
+# Square (sandbox or production)
+SQUARE_ENV=sandbox
+SQUARE_ACCESS_TOKEN=
+SQUARE_LOCATION_ID=
+SQUARE_APP_ID=sandbox-sq0idb-d196KbJ46zRQtwA5Hll6fQ
+
+# Resend
+RESEND_API_KEY=
+EMAIL_FROM=Dolphin Island Tours <bookings@dolphinislandtours.com>
+ADMIN_EMAIL=lewis@dolphinislandtours.com
+
+# Frontend
+FRONTEND_URL=http://localhost:5173
+
+# Pricing
+PRICE_PER_PERSON=60
+MIN_PARTY=3
+MAX_PARTY=6
+FAKE_PAYMENTS=1
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=patel.prerak2798@gmail.com
+SMTP_PASSWORD=meze mmew zmom esjs
+EMAIL_FROM=Dolphin Island Tours <patel.prerak2798@gmail.com>
+ADMIN_EMAIL=patel.prerak2798@gmail.com

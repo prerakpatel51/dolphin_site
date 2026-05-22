@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Cancel booking</h1>
+
+<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin:16px 0">
+  <h3 style="margin-top:0">Booking details</h3>
+  <p>
+    <b>{{ booking.customer_name }}</b> &lt;{{ booking.customer_email }}&gt;
+    {% if booking.customer_phone %} · {{ booking.customer_phone }}{% endif %}<br>
+    <b>Tour:</b> {{ booking.slot.tour.name }}<br>
+    <b>Date:</b> {{ booking.slot.date }} at {{ booking.slot.time }}<br>
+    <b>Party:</b> {{ booking.party_size }} guests<br>
+    <b>Amount paid:</b> ${{ booking.total_cents|stringformat:"d"|slice:"-100:" }} cents
+      (~${{ booking.total_cents|floatformat:0 }} / 100)<br>
+    <b>Confirmation:</b> {{ booking.id }}
+  </p>
+  {% if booking.special_requests %}
+  <p><b>Special requests:</b><br>{{ booking.special_requests }}</p>
+  {% endif %}
+</div>
+
+<form method="post">{% csrf_token %}
+  <table>{{ form.as_table }}</table>
+  <div style="margin-top:16px">
+    <button type="submit" class="default" style="background:#dc2626">Cancel booking + email customer</button>
+    <a href="../../" style="margin-left:12px">Back</a>
+  </div>
+</form>
+
+{% if alternatives %}
+<h3 style="margin-top:32px">Alternative departures (next 21 days)</h3>
+<p>These will be suggested in the cancellation email if the box is checked above.</p>
+<ul>
+  {% for s in alternatives %}
+    <li>{{ s.date }} at {{ s.time }} — {{ s.seats_remaining }} seats remaining</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p style="color:#666;margin-top:32px"><i>No alternative departures available for this tour in the next 21 days.</i></p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-22T01:47:48.251Z",
+  "entries": [
+    {
+      "id": "change-1779414468251-f9d4fbbf",
+      "savedAt": "2026-05-22T01:47:48.251Z",
+      "actor": "user",
+      "source": "editor",
+      "model": "",
+      "scope": "",
+      "prompt": "",
+      "contributors": [
+        "user"
+      ],
+      "documentPath": "backend/.env",
+      "documentLabel": "backend/.env",
+      "stats": {
+        "addedLines": 1,
+        "removedLines": 1,
+        "changedLines": 1,
+        "addedChars": 17,
+        "removedChars": 16
+      },
+      "beforeSnapshot": "history/change-1779414468251-f9d4fbbf-before.txt",
+      "afterSnapshot": "history/change-1779414468251-f9d4fbbf-after.txt"
+    },
+    {
+      "id": "change-1779414467982-fa3c8493",
+      "savedAt": "2026-05-22T01:47:47.983Z",
+      "actor": "user",
+      "source": "editor",
+      "model": "",
+      "scope": "",
+      "prompt": "",
+      "contributors": [
+        "user"
+      ],
+      "documentPath": "backend/.env",
+      "documentLabel": "backend/.env",
+      "stats": {
+        "addedLines": 1,
+        "removedLines": 1,
+        "changedLines": 1,
+        "addedChars": 16,
+        "removedChars": 15
+      },
+      "beforeSnapshot": "history/change-1779414467982-fa3c8493-before.txt",
+      "afterSnapshot": "history/change-1779414467982-fa3c8493-after.txt"
+    },
+    {
+      "id": "change-1779414458612-4c68b784",
+      "savedAt": "2026-05-22T01:47:38.613Z",
+      "actor": "user",
+      "source": "editor",
+      "model": "",
+      "scope": "",
+      "prompt": "",
+      "contributors": [
+        "user"
+      ],
+      "documentPath": "backend/.env",
+      "documentLabel": "backend/.env",
+      "stats": {
+        "addedLines": 1,
+        "removedLines": 1,
+        "changedLines": 1,
+        "addedChars": 32,
+        "removedChars": 19
+      },
+      "beforeSnapshot": "history/change-1779414458612-4c68b784-before.txt",
+      "afterSnapshot": "history/change-1779414458612-4c68b784-after.txt"
+    },
+    {
+      "id": "change-1779414433853-849587f7",
+      "savedAt": "2026-05-22T01:47:13.854Z",
+      "actor": "user",
+      "source": "editor",
+      "model": "",
+      "scope": "",
+      "prompt": "",
+      "contributors": [
+        "user"
+      ],
+      "documentPath": "backend/.env",
+      "documentLabel": "backend/.env",
+      "stats": {
+        "addedLines": 1,
+        "removedLines": 1,
+        "changedLines": 1,
+        "addedChars": 84,
+        "removedChars": 20
+      },
+      "beforeSnapshot": "history/change-1779414433853-849587f7-before.txt",
+      "afterSnapshot": "history/change-1779414433853-849587f7-after.txt"
+    },
+    {
+      "id": "change-1779414425016-f6741d19",
+      "savedAt": "2026-05-22T01:47:05.017Z",
+      "actor": "user",
+      "source": "editor",
+      "model": "",
+      "scope": "",
+      "prompt": "",
+      "contributors": [
+        "user"
+      ],
+      "documentPath": "backend/.env",
+      "documentLabel": "backend/.env",
+      "stats": {
+        "addedLines": 1,
+        "removedLines": 1,
+        "changedLines": 1,
+        "addedChars": 51,
+        "removedChars": 14
+      },
+      "beforeSnapshot": "history/change-1779414425016-f6741d19-before.txt",
+      "afterSnapshot": "history/change-1779414425016-f6741d19-after.txt"
+    }
+  ]
+}

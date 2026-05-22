@@ -1,0 +1,63 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+  .di-card { background:#eef9fd; border:1px solid #bae1ee; border-radius:8px; padding:16px; margin:16px 0; color:#0b3a52; }
+  .di-card b { color:#062436; }
+  .di-pre { background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:6px; white-space:pre-wrap; color:#0f172a; }
+  .di-list { max-height:240px; overflow:auto; background:#f8fafc; padding:12px 24px; border-radius:6px; color:#0f172a; }
+  .di-btn { background:#1389b1; color:#fff; padding:10px 18px; border-radius:6px; border:none; font-weight:600; cursor:pointer; }
+  @media (prefers-color-scheme: dark) {
+    .di-card { background:#0e3a4a; border-color:#155467; color:#e2f3fa; }
+    .di-card b { color:#fff; }
+    .di-pre, .di-list { background:#0f172a; border-color:#1e293b; color:#e2e8f0; }
+  }
+  /* Django admin dark theme class */
+  html[data-theme="dark"] .di-card { background:#0e3a4a; border-color:#155467; color:#e2f3fa; }
+  html[data-theme="dark"] .di-card b { color:#fff; }
+  html[data-theme="dark"] .di-pre,
+  html[data-theme="dark"] .di-list { background:#0f172a; border-color:#1e293b; color:#e2e8f0; }
+</style>
+
+<h1>{% if campaign.status == "sent" %}Resend{% else %}Send{% endif %} campaign · {{ campaign.name }}</h1>
+
+{% if campaign.status == "sent" %}
+<div class="di-card" style="background:#fff7ed;border-color:#fed7aa;color:#7c2d12">
+  <p style="margin:0"><b>Already sent {{ campaign.sent_count }} times.</b>
+  Resending will deliver to every recipient again
+  {% if campaign.attach_promo %}and generate NEW unique promo codes (old codes remain valid).{% endif %}</p>
+</div>
+{% endif %}
+
+<div class="di-card">
+  <p><b>Subject:</b> {{ campaign.subject }}</p>
+  <p><b>Audience:</b> {{ campaign.get_audience_display }}</p>
+  <p><b>Recipients:</b> {{ recipients|length }} unique emails</p>
+  {% if campaign.attach_promo %}
+    <p><b>Promo:</b> unique single-use code per recipient
+      ({% if campaign.promo_kind == "percent" %}{{ campaign.promo_percent_off }}% off
+       {% else %}${{ campaign.promo_amount_off_cents }} off (cents){% endif %})
+       {% if campaign.promo_expires_at %} – expires {{ campaign.promo_expires_at }}{% endif %}
+    </p>
+  {% endif %}
+  {% if campaign.cta_label and campaign.cta_url %}
+    <p><b>CTA:</b> {{ campaign.cta_label }} → {{ campaign.cta_url }}</p>
+  {% endif %}
+</div>
+
+<details style="margin:16px 0">
+  <summary style="cursor:pointer;font-weight:600">Preview recipients ({{ recipients|length }})</summary>
+  <ul class="di-list">
+    {% for email, name in recipients %}<li>{{ email }}{% if name %} – {{ name }}{% endif %}</li>{% endfor %}
+  </ul>
+</details>
+
+<details style="margin:16px 0">
+  <summary style="cursor:pointer;font-weight:600">Email body preview (variables intact)</summary>
+  <div class="di-pre">{{ campaign.body }}</div>
+</details>
+
+<form method="post" style="margin-top:24px">{% csrf_token %}
+  <button type="submit" class="di-btn">{% if campaign.status == "sent" %}Resend{% else %}Send{% endif %} {{ recipients|length }} emails now</button>
+  <a href="../" style="margin-left:12px">Back</a>
+</form>
+{% endblock %}

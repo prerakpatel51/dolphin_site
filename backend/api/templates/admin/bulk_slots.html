@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Bulk create slots</h1>
+<p>Pick a tour, a date range, weekdays, departure times, and capacity. Existing slots are kept.</p>
+<form method="post">{% csrf_token %}
+  <table>{{ form.as_table }}</table>
+  <p><button type="submit" class="default">Create slots</button>
+     <a href="..">Cancel</a></p>
+</form>
+{% endblock %}
