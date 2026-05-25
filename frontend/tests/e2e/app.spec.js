@@ -119,6 +119,7 @@ async function mockApi(page) {
   await page.route("**/api/tours/wildlife/dates/", route => route.fulfill({
     json: { dates: { "2030-06-15": [{ id: 101, time: "09:00", seats_remaining: 6 }] } },
   }));
+  await page.route("**/api/tours/wildlife/", route => route.fulfill({ json: testTour }));
   await page.route("**/api/tours/wildlife/reviews/stats/", route => route.fulfill({
     json: { count: 0, average: 0, breakdown: {} },
   }));

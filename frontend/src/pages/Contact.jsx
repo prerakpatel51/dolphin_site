@@ -33,7 +33,7 @@ export default function Contact() {
         ])}
       />
       <section className="relative h-[30vh] min-h-[220px] overflow-hidden">
-        <img src={page.hero_image_url || "/images/lagoon.jpg"} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={page.hero_image_url || "/images/lagoon.jpg"} alt="" fetchPriority="high" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-ocean-950/60" />
         <div className="relative max-w-4xl mx-auto px-4 h-full flex flex-col justify-end pb-8 sm:pb-10 text-white">
           <p className="uppercase tracking-[0.25em] sm:tracking-[0.3em] text-ocean-200 text-[10px] sm:text-xs mb-2 sm:mb-3">{page.hero_eyebrow}</p>
@@ -68,17 +68,17 @@ export default function Contact() {
           ) : (
             <>
               <div className="grid sm:grid-cols-2 gap-3">
-                <div><label className="label">Your name *</label>
-                  <input className="input" required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
-                <div><label className="label">Email *</label>
-                  <input type="email" className="input" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></div>
-                <div><label className="label">Phone</label>
-                  <input className="input" value={f.phone} onChange={e=>setF({...f,phone:e.target.value})}/></div>
-                <div><label className="label">Subject</label>
-                  <input className="input" value={f.subject} onChange={e=>setF({...f,subject:e.target.value})} placeholder="Booking question, private charter…"/></div>
+                <div><label className="label" htmlFor="contact-name">Your name *</label>
+                  <input id="contact-name" className="input" required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></div>
+                <div><label className="label" htmlFor="contact-email">Email *</label>
+                  <input id="contact-email" type="email" className="input" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></div>
+                <div><label className="label" htmlFor="contact-phone">Phone</label>
+                  <input id="contact-phone" className="input" value={f.phone} onChange={e=>setF({...f,phone:e.target.value})}/></div>
+                <div><label className="label" htmlFor="contact-subject">Subject</label>
+                  <input id="contact-subject" className="input" value={f.subject} onChange={e=>setF({...f,subject:e.target.value})} placeholder="Booking question, private charter…"/></div>
               </div>
-              <div><label className="label">Your message *</label>
-                <textarea required className="input min-h-[160px]" value={f.message} onChange={e=>setF({...f,message:e.target.value})}/></div>
+              <div><label className="label" htmlFor="contact-message">Your message *</label>
+                <textarea id="contact-message" required className="input min-h-[160px]" value={f.message} onChange={e=>setF({...f,message:e.target.value})}/></div>
               {err && <p className="text-red-600 text-sm">{err}</p>}
               <button disabled={busy} className="btn-primary w-full">{busy ? "Sending…" : "Send message"}</button>
               <p className="text-xs text-ocean-500">By submitting, you agree to be contacted about your inquiry.</p>

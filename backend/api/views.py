@@ -2,13 +2,17 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Avg, Count, F, IntegerField, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import timedelta
 from rest_framework import viewsets, mixins
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -23,6 +27,70 @@ from .emails import send_email, booking_receipt_html, admin_notify_html, contact
 from .payments import charge
 
 User = get_user_model()
+BOOKED_STATUSES = ["paid", "pending"]
+PAYMENT_FAILED_MESSAGE = (
+    "Your card was declined or could not be charged. No charge was made and your booking "
+    "was not confirmed. Please try another card."
+)
+
+
+def set_auth_cookies(response, refresh):
+    access = refresh.access_token
+    cookie_kwargs = {
+        "httponly": True,
+        "secure": settings.JWT_COOKIE_SECURE,
+        "samesite": settings.JWT_COOKIE_SAMESITE,
+        "path": "/api/",
+    }
+    response.set_cookie(
+        "access_token",
+        str(access),
+        max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
+        **cookie_kwargs,
+    )
+    response.set_cookie(
+        "refresh_token",
+        str(refresh),
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        **cookie_kwargs,
+    )
+    return response
+
+
+def clear_auth_cookies(response):
+    for name in ("access_token", "refresh_token"):
+        response.delete_cookie(
+            name,
+            path="/api/",
+            samesite=settings.JWT_COOKIE_SAMESITE,
+            secure=settings.JWT_COOKIE_SECURE,
+        )
+    return response
+
+
+def with_booked_seats(qs):
+    return qs.annotate(
+        booked_seats=Coalesce(
+            Sum("bookings__party_size", filter=Q(bookings__status__in=BOOKED_STATUSES)),
+            Value(0),
+            output_field=IntegerField(),
+        )
+    )
+
+
+def expire_stale_pending_bookings():
+    minutes = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_MINUTES", 15)))
+    cutoff = timezone.now() - timedelta(minutes=minutes)
+    expired = Booking.objects.filter(status="pending", updated_at__lt=cutoff).update(status="expired")
+    if expired:
+        ActivityLog.log(
+            "booking.pending_expired",
+            f"Expired {expired} pending booking hold{'s' if expired != 1 else ''}.",
+            level="info",
+            actor="system",
+            count=expired,
+        )
+    return expired
 
 
 def client_ip(request):
@@ -53,10 +121,46 @@ class SignupView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if rate_limited(request, "signup", limit=5, window=10 * 60):
+            return Response({"detail": "Too many signup attempts. Try again later."}, status=429)
         s = UserSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         user = s.save()
         return Response(UserSerializer(user).data, status=201)
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = TokenObtainPairSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        refresh = RefreshToken(serializer.validated_data["refresh"])
+        response = Response({"ok": True})
+        return set_auth_cookies(response, refresh)
+
+
+class RefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = request.COOKIES.get("refresh_token")
+        if not token:
+            return Response({"detail": "Refresh token is missing."}, status=401)
+        try:
+            refresh = RefreshToken(token)
+        except Exception:
+            response = Response({"detail": "Refresh token is invalid or expired."}, status=401)
+            return clear_auth_cookies(response)
+        response = Response({"ok": True})
+        return set_auth_cookies(response, refresh)
+
+
+class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        return clear_auth_cookies(Response(status=204))
 
 
 class MeView(APIView):
@@ -85,9 +189,13 @@ class TourViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
 @permission_classes([AllowAny])
 def tour_dates(request, slug):
     """Return dates that have at least one bookable slot, grouped per date."""
-    qs = (TourSlot.objects.filter(tour__slug=slug, is_active=True,
-                                  date__gte=timezone.now().date())
-          .select_related("tour").order_by("date", "time"))
+    expire_stale_pending_bookings()
+    qs = with_booked_seats(
+        TourSlot.objects.filter(tour__slug=slug, is_active=True,
+                                date__gte=timezone.now().date())
+        .select_related("tour")
+        .order_by("date", "time")
+    )
     by_date = {}
     for s in qs:
         if s.seats_remaining <= 0:
@@ -99,32 +207,37 @@ def tour_dates(request, slug):
     return Response({"dates": by_date})
 
 
-class TourSlotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class TourSlotViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     queryset = TourSlot.objects.filter(is_active=True)
     serializer_class = TourSlotSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
+        expire_stale_pending_bookings()
         qs = super().get_queryset()
         from django.utils import timezone
         qs = qs.filter(date__gte=timezone.now().date()).select_related("tour")
         tour_slug = self.request.query_params.get("tour")
         if tour_slug:
             qs = qs.filter(tour__slug=tour_slug)
-        return qs
+        return with_booked_seats(qs)
 
 
-class BookingViewSet(viewsets.ModelViewSet):
+class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        expire_stale_pending_bookings()
         return Booking.objects.filter(user=self.request.user)
 
     @action(detail=False, methods=["post"], url_path="create-and-pay")
     @transaction.atomic
     def create_and_pay(self, request):
         """Create booking + charge Square in one shot."""
+        if rate_limited(request, "booking_create", str(request.user.pk), limit=10, window=10 * 60):
+            return Response({"detail": "Too many booking attempts. Try again later."}, status=429)
+        expire_stale_pending_bookings()
         create_ser = BookingCreateSerializer(data=request.data)
         create_ser.is_valid(raise_exception=True)
         data = create_ser.validated_data
@@ -155,7 +268,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         if promo_str:
             try:
                 pc = PromoCode.objects.select_for_update().get(code__iexact=promo_str)
-                ok, reason = pc.is_redeemable(email=data["customer_email"])
+                promo_email = request.user.email if request.user.is_authenticated else data["customer_email"]
+                ok, reason = pc.is_redeemable(email=promo_email)
                 if not ok:
                     return Response({"promo_code": reason}, status=400)
                 promo_obj = pc
@@ -193,11 +307,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                 payment = charge(source_id, total, data["customer_email"],
                                  note=f"Dolphin tour {data['slot'].date} {data['slot'].time}")
             except Exception as e:
-                booking.status = "cancelled"
-                booking.save()
+                booking.status = "payment_failed"
+                booking.save(update_fields=["status", "updated_at"])
                 ActivityLog.log("booking.payment_failed", str(e), level="error",
                                  actor=request.user.email, booking_id=str(booking.id))
-                return Response({"detail": str(e)}, status=402)
+                return Response({"detail": PAYMENT_FAILED_MESSAGE}, status=402)
 
         booking.square_payment_id = payment.get("id", "")
         booking.square_order_id = payment.get("order_id", "")
@@ -286,12 +400,14 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gen
 @permission_classes([AllowAny])
 def tour_review_stats(request, slug):
     qs = Review.objects.filter(is_approved=True, tour__slug=slug)
-    total = qs.count()
+    summary = qs.aggregate(total=Count("id"), average=Avg("rating"))
+    total = summary["total"] or 0
     if total == 0:
         return Response({"count": 0, "average": 0, "breakdown": {}})
-    avg = sum(r.rating for r in qs) / total
-    breakdown = {str(i): qs.filter(rating=i).count() for i in range(1, 6)}
-    return Response({"count": total, "average": round(avg, 2), "breakdown": breakdown})
+    rows = qs.values("rating").annotate(total=Count("id"))
+    breakdown = {str(i): 0 for i in range(1, 6)}
+    breakdown.update({str(row["rating"]): row["total"] for row in rows})
+    return Response({"count": total, "average": round(summary["average"] or 0, 2), "breakdown": breakdown})
 
 
 @api_view(["POST"])
@@ -398,6 +514,8 @@ class ContactView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if rate_limited(request, "contact", limit=5, window=10 * 60):
+            return Response({"detail": "Too many contact submissions. Try again later."}, status=429)
         ser = ContactMessageSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         msg = ser.save()
@@ -445,7 +563,22 @@ def robots_txt(request):
     configured = SiteSettings.get().robots_txt.strip()
     configured_frontend = settings.FRONTEND_URL.rstrip("/")
     base = request.build_absolute_uri("/").rstrip("/") if configured_frontend.endswith(":5173") else configured_frontend
-    if "Sitemap:" not in configured:
+    lines = []
+    has_sitemap = False
+    for line in configured.splitlines():
+        if line.lower().startswith("sitemap:"):
+            has_sitemap = True
+            value = line.split(":", 1)[1].strip()
+            if value.startswith("/"):
+                lines.append(f"Sitemap: {base}{value}")
+            elif value:
+                lines.append(f"Sitemap: {value}")
+            else:
+                lines.append(f"Sitemap: {base}/sitemap.xml")
+        else:
+            lines.append(line)
+    configured = "\n".join(lines)
+    if not has_sitemap:
         configured = f"{configured}\nSitemap: {base}/sitemap.xml"
     return HttpResponse(configured + "\n", content_type="text/plain")
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api.js";
+import SEO from "../components/SEO.jsx";
 
 export default function ResetPassword() {
   const nav = useNavigate();
@@ -30,6 +31,12 @@ export default function ResetPassword() {
   if (!uid || !token) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <SEO
+          title="Reset Link Missing | Dolphin Island Tours"
+          description="Request a new Dolphin Island Tours password reset link."
+          canonical="/forgot-password"
+          robots="noindex, follow"
+        />
         <h1 className="text-3xl mb-2">Reset link is missing.</h1>
         <p className="text-ocean-700 mb-6">Request a new one.</p>
         <Link to="/forgot-password" className="btn-primary">Send new link</Link>
@@ -39,6 +46,12 @@ export default function ResetPassword() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="Set a New Password | Dolphin Island Tours"
+        description="Set a new password for your Dolphin Island Tours account."
+        canonical="/reset-password"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-2">Set a new password</h1>
       <div className="card p-6 sm:p-8 mt-6">
         {done ? (
@@ -48,11 +61,11 @@ export default function ResetPassword() {
           </div>
         ) : (
           <form onSubmit={submit} className="space-y-4">
-            <div><label className="label">New password</label>
-              <input type="password" required minLength={8} className="input"
+            <div><label className="label" htmlFor="reset-password">New password</label>
+              <input id="reset-password" type="password" required minLength={8} className="input"
                 value={pw} onChange={e => setPw(e.target.value)} /></div>
-            <div><label className="label">Confirm new password</label>
-              <input type="password" required minLength={8} className="input"
+            <div><label className="label" htmlFor="reset-password-confirm">Confirm new password</label>
+              <input id="reset-password-confirm" type="password" required minLength={8} className="input"
                 value={pw2} onChange={e => setPw2(e.target.value)} /></div>
             {err && <p className="text-red-600 text-sm">{err}</p>}
             <button disabled={busy} className="btn-primary w-full">{busy ? "…" : "Update password"}</button>

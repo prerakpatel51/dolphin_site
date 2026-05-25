@@ -18,18 +18,44 @@ export default function TourDetail() {
   const [formError, setFormError] = useState("");
   const { site } = useSite("tours");
   const nav = useNavigate();
+  const [loadState, setLoadState] = useState("loading");
 
   useEffect(() => {
-    api.tours().then(d => {
-      const list = d.results || d;
-      setTour(list.find(t => t.slug === slug));
+    let alive = true;
+    setLoadState("loading");
+    Promise.allSettled([
+      api.tour(slug),
+      api.tourDates(slug),
+    ]).then(([tourResult, datesResult]) => {
+      if (!alive) return;
+      if (tourResult.status === "fulfilled") {
+        setTour(tourResult.value);
+        setLoadState("ready");
+      } else {
+        setTour(null);
+        setLoadState("not-found");
+      }
+      if (datesResult.status === "fulfilled") setDates(datesResult.value.dates || {});
     });
-    api.tourDates(slug).then(d => setDates(d.dates || {}));
     setSelected(null);
     setSelectedSlotId("");
     setFormError("");
+    return () => { alive = false; };
   }, [slug]);
 
+  if (loadState === "not-found") return (
+    <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+      <SEO
+        title="Tour Not Found | Dolphin Island Tours"
+        description="This Dolphin Island Tours departure page could not be found. Browse current Merritt Island boat tours."
+        canonical={`/tours/${slug}`}
+      />
+      <p className="uppercase tracking-[0.18em] text-ocean-500 text-xs mb-2">Tour not found</p>
+      <h1 className="text-3xl sm:text-5xl mb-3">That tour is not available.</h1>
+      <p className="text-ocean-700 mb-6">It may have been renamed, removed, or temporarily paused.</p>
+      <Link className="btn-primary" to="/tours">Browse current tours</Link>
+    </div>
+  );
   if (!tour) return <div className="max-w-4xl mx-auto p-10">Loading…</div>;
 
   const slotsForDay = selected ? dates[selected] || [] : [];
@@ -112,8 +138,8 @@ export default function TourDetail() {
           },
         ])}
       />
-      <section className="relative h-[50vh] min-h-[320px] sm:h-[55vh] overflow-hidden">
-        <img src={tour.image_url || "/images/welcome.jpg"} alt={tour.name} className="absolute inset-0 w-full h-full object-cover" />
+      <section className="relative h-[52svh] min-h-[360px] sm:h-[55vh] overflow-hidden">
+        <img src={tour.image_url || "/images/welcome.jpg"} alt={tour.name} fetchPriority="high" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-ocean-950/80 via-ocean-950/30 to-transparent" />
         <div className="relative max-w-5xl mx-auto px-4 h-full flex flex-col justify-end pb-8 sm:pb-10 text-white">
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-display leading-[1.05]">{tour.name}</h1>
@@ -126,22 +152,9 @@ export default function TourDetail() {
         </div>
       </section>
 
-      <div className="max-w-5xl mx-auto px-4 py-8 sm:py-12">
-        <div className="grid md:grid-cols-3 gap-6 sm:gap-8">
-          <div className="md:col-span-2">
-            <h2 className="text-2xl mb-3">About this tour</h2>
-            <p className="text-ocean-800 whitespace-pre-line">{tour.long_description}</p>
-
-            <h2 className="text-2xl mt-10 mb-3">What to bring</h2>
-            <ul className="list-disc pl-5 text-ocean-800 space-y-1">
-              <li>Sunscreen, hat, sunglasses</li>
-              <li>Water bottle</li>
-              <li>Camera or phone</li>
-              <li>Light layer (it's breezier on the water)</li>
-            </ul>
-          </div>
-
-          <aside className="card p-5 sm:p-6 h-fit md:sticky md:top-24">
+      <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
+        <section className="max-w-3xl mx-auto">
+          <div className="card p-4 sm:p-7 h-fit">
             <p className="uppercase tracking-[0.18em] text-ocean-500 text-xs mb-2">Step 1</p>
             <h3 className="text-xl mb-1">Choose your departure</h3>
             <p className="text-sm text-ocean-600 mb-4">Pick a date, time, party size, and traveler names before payment.</p>
@@ -162,7 +175,7 @@ export default function TourDetail() {
                         type="button"
                         key={s.id}
                         onClick={() => { setSelectedSlotId(String(s.id)); updatePartySize(Math.min(partySize, s.seats_remaining)); }}
-                        className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${active ? "border-ocean-600 bg-ocean-600 text-white" : "border-ocean-200 bg-white text-ocean-800 hover:border-ocean-500"}`}
+                        className={`rounded-xl border px-3 py-2.5 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ocean-400 ${active ? "border-ocean-600 bg-ocean-600 text-white shadow-lg shadow-ocean-600/20" : "border-ocean-200 bg-white text-ocean-800 hover:border-ocean-500"}`}
                       >
                         <span className="font-semibold">{s.time}</span>
                         <span className={`block text-xs ${active ? "text-ocean-100" : "text-ocean-500"}`}>{s.seats_remaining} seats left</span>
@@ -193,7 +206,7 @@ export default function TourDetail() {
                   {travelers.map((traveler, index) => (
                     <div key={index} className="rounded-xl border border-ocean-100 bg-ocean-50/50 p-3">
                       <div className="text-xs font-semibold uppercase tracking-wider text-ocean-500 mb-2">Guest {index + 1}</div>
-                      <div className="grid grid-cols-[1fr_92px] gap-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
                         <input
                           className="input !py-2"
                           placeholder="Full name"
@@ -233,8 +246,22 @@ export default function TourDetail() {
             {!selected && Object.keys(dates).length === 0 && (
               <p className="text-ocean-600 text-sm mt-4">No upcoming slots — check back soon.</p>
             )}
-          </aside>
-        </div>
+          </div>
+        </section>
+
+        <section className="max-w-3xl mx-auto mt-12 sm:mt-16">
+          <h2 className="text-2xl mb-3">About this tour</h2>
+          <p className="text-ocean-800 whitespace-pre-line">{tour.long_description}</p>
+
+          <h2 className="text-2xl mt-10 mb-3">What to bring</h2>
+          <ul className="list-disc pl-5 text-ocean-800 space-y-1">
+            <li>Sunscreen, hat, sunglasses</li>
+            <li>Water bottle</li>
+            <li>Camera or phone</li>
+            <li>Light layer (it's breezier on the water)</li>
+          </ul>
+        </section>
+
         <Reviews tourSlug={slug} />
       </div>
     </div>

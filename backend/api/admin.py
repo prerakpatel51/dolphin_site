@@ -8,7 +8,8 @@ from django.utils import timezone
 from datetime import timedelta, datetime
 from django.utils.html import format_html, format_html_join
 from .models import (User, Tour, TourSlot, Booking, SiteImage, SiteSettings, ContactMessage,
-                     ActivityLog, PageContent, PromoCode, MailingListEntry, EmailCampaign)
+                     ActivityLog, PageContent, PromoCode, MailingListEntry, EmailCampaign,
+                     EmailDeliveryJob, EmailDeliveryRecipient)
 import secrets, string
 
 
@@ -123,7 +124,7 @@ def send_promotional_email_action(modeladmin, request, queryset, source_label, e
     if "apply" in request.POST:
         form = PromotionalEmailForm(request.POST)
         if form.is_valid():
-            from .emails import send_email, promotional_email_html, campaign_email_html
+            from .email_queue import enqueue_bulk_promotional_email
 
             recipients = promotional_email_recipients(
                 queryset,
@@ -134,65 +135,26 @@ def send_promotional_email_action(modeladmin, request, queryset, source_label, e
                 modeladmin.message_user(request, "No valid email recipients found.", level=messages.WARNING)
                 return None
 
-            subject = form.cleaned_data["subject"]
-            attach_promo = form.cleaned_data.get("attach_promo")
-            promo_codes_made = []
-            sent = 0
-            failed = []
-            for email in recipients:
-                promo_code = ""
-                if attach_promo:
-                    pc = PromoCode.objects.create(
-                        code=_gen_promo_code(prefix="PROMO"),
-                        label=f"Bulk email · {subject[:60]}",
-                        kind=form.cleaned_data.get("promo_kind") or "percent",
-                        percent_off=form.cleaned_data.get("promo_percent_off") or 10,
-                        amount_off_cents=form.cleaned_data.get("promo_amount_off_cents") or 0,
-                        max_uses=1,
-                        locked_to_email=email,
-                        expires_at=form.cleaned_data.get("promo_expires_at"),
-                    )
-                    promo_code = pc.code
-                    promo_codes_made.append(pc.code)
-                # If promo attached, use campaign_email_html so {promo_code}/{name} fill in and badge shows.
-                if attach_promo:
-                    html = campaign_email_html(
-                        form.cleaned_data["message"],
-                        name="", promo_code=promo_code,
-                        cta_label=form.cleaned_data["cta_label"],
-                        cta_url=form.cleaned_data["cta_url"],
-                    )
-                else:
-                    html = promotional_email_html(
-                        form.cleaned_data["message"],
-                        form.cleaned_data["cta_label"],
-                        form.cleaned_data["cta_url"],
-                    )
-                try:
-                    send_email(email, subject, html)
-                    sent += 1
-                except Exception as e:
-                    failed.append(f"{email}: {e}")
-
-            ActivityLog.log(
-                "marketing.bulk_email_sent",
-                f"{sent} sent, {len(failed)} failed from {source_label}"
-                + (f", {len(promo_codes_made)} promo codes" if promo_codes_made else ""),
-                level="success" if not failed else "warn",
-                actor=request.user.email,
-                subject=subject,
+            job = enqueue_bulk_promotional_email(
+                subject=form.cleaned_data["subject"],
+                message=form.cleaned_data["message"],
                 recipients=recipients,
-                failures=failed[:20],
-                promo_codes=promo_codes_made[:50],
+                source_label=source_label,
+                actor_email=request.user.email,
+                cta_label=form.cleaned_data["cta_label"],
+                cta_url=form.cleaned_data["cta_url"],
+                attach_promo=form.cleaned_data.get("attach_promo"),
+                promo_kind=form.cleaned_data.get("promo_kind") or "percent",
+                promo_percent_off=form.cleaned_data.get("promo_percent_off") or 10,
+                promo_amount_off_cents=form.cleaned_data.get("promo_amount_off_cents") or 0,
+                promo_expires_at=form.cleaned_data.get("promo_expires_at"),
+                code_factory=_gen_promo_code,
             )
-            if failed:
-                modeladmin.message_user(
-                    request,
-                    f"Sent {sent} promotional emails. {len(failed)} failed; see Activity logs.",
-                    level=messages.WARNING,
-                )
-            else:
-                modeladmin.message_user(request, f"Sent {sent} promotional emails.", level=messages.SUCCESS)
+            modeladmin.message_user(
+                request,
+                f"Queued {len(recipients)} promotional emails as delivery job #{job.pk}.",
+                level=messages.SUCCESS,
+            )
             return None
     else:
         form = PromotionalEmailForm(initial={
@@ -330,6 +292,11 @@ class ContactMessageAdmin(admin.ModelAdmin):
     readonly_fields = ("name", "email", "phone", "subject", "message", "created_at", "reply_link")
     actions = ["send_promotional_email"]
 
+    def get_readonly_fields(self, request, obj=None):
+        if obj is None:
+            return ("created_at", "reply_link")
+        return self.readonly_fields
+
     def get_urls(self):
         urls = super().get_urls()
         return [path("<int:message_id>/reply/", self.admin_site.admin_view(self.reply_view),
@@ -413,7 +380,22 @@ class UserAdmin(BaseUserAdmin):
     list_filter = BaseUserAdmin.list_filter + ("accepts_marketing",)
     search_fields = ("email", "username", "phone")
     fieldsets = BaseUserAdmin.fieldsets + (("Extra", {"fields": ("phone", "accepts_marketing")}),)
-    actions = ["send_promotional_email"]
+    add_fieldsets = (
+        (None, {
+            "classes": ("wide",),
+            "fields": (
+                "email",
+                "username",
+                "first_name",
+                "last_name",
+                "phone",
+                "accepts_marketing",
+                "password1",
+                "password2",
+            ),
+        }),
+    )
+    actions = ["send_promotional_email", "add_to_mailing_list"]
 
     staff_guard_message = "Only the superuser can edit or delete staff/admin accounts."
 
@@ -481,6 +463,30 @@ class UserAdmin(BaseUserAdmin):
         )
     send_promotional_email.short_description = "Send promotional email to selected users"
 
+    def add_to_mailing_list(self, request, queryset):
+        created = 0
+        updated = 0
+        for user in queryset.exclude(email=""):
+            name = f"{user.first_name} {user.last_name}".strip() or user.username
+            _, made = MailingListEntry.objects.update_or_create(
+                email=user.email.lower(),
+                defaults={
+                    "name": name,
+                    "subscribed": True,
+                    "tags": "app-user",
+                },
+            )
+            if made:
+                created += 1
+            else:
+                updated += 1
+        self.message_user(
+            request,
+            f"Added {created} users to mailing list; updated {updated} existing entries.",
+            level=messages.SUCCESS,
+        )
+    add_to_mailing_list.short_description = "Add selected users to mailing list"
+
 
 @admin.register(TourSlot)
 class TourSlotAdmin(admin.ModelAdmin):
@@ -534,7 +540,7 @@ class CancelBookingForm(forms.Form):
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
-    list_display = ("customer_name", "customer_email", "slot", "party_size", "total_display", "status", "cancel_link", "created_at")
+    list_display = ("customer_name", "customer_email", "slot", "party_size", "total_display", "status", "payment_refs", "cancel_link", "created_at")
     list_filter = ("status", "slot__date", "slot__tour")
     search_fields = ("customer_name", "customer_email", "square_payment_id", "id")
     readonly_fields = ("id", "square_payment_id", "square_order_id", "tax_cents", "total_cents", "traveler_list", "created_at", "updated_at")
@@ -552,6 +558,15 @@ class BookingAdmin(admin.ModelAdmin):
         return f"${obj.total_cents/100:.2f}"
     total_display.short_description = "Total"
 
+    def payment_refs(self, obj):
+        refs = []
+        if obj.square_payment_id:
+            refs.append(f"Payment: {obj.square_payment_id}")
+        if obj.square_order_id:
+            refs.append(f"Order: {obj.square_order_id}")
+        return " / ".join(refs) or "—"
+    payment_refs.short_description = "Square refs"
+
     def traveler_list(self, obj):
         if not obj or not obj.travelers:
             return "No traveler details recorded."
@@ -564,7 +579,7 @@ class BookingAdmin(admin.ModelAdmin):
     traveler_list.short_description = "Traveler list"
 
     def cancel_link(self, obj):
-        if obj.status in ("cancelled", "refunded"):
+        if obj.status in ("cancelled", "refunded", "payment_failed", "expired"):
             return format_html('<span style="color:#888">—</span>')
         return format_html('<a class="button" style="background:#dc2626;color:#fff;padding:3px 10px;border-radius:4px;text-decoration:none" href="{}">Cancel</a>',
                            f"./{obj.id}/cancel/")
@@ -628,7 +643,7 @@ class BookingAdmin(admin.ModelAdmin):
         from .emails import send_email, booking_cancelled_html
         reason = "Cancelled by Dolphin Island Tours. We'll be in touch to reschedule or refund."
         sent = 0
-        for b in queryset.exclude(status__in=("cancelled", "refunded")):
+        for b in queryset.exclude(status__in=("cancelled", "refunded", "payment_failed", "expired")):
             b.status = "cancelled"
             b.save()
             try:
@@ -733,48 +748,53 @@ class EmailCampaignAdmin(admin.ModelAdmin):
         campaign = EmailCampaign.objects.get(pk=campaign_id)
         recipients = campaign.collect_recipients()
         if request.method == "POST":
-            from .emails import send_email, campaign_email_html
-            campaign.status = "sending"
-            campaign.save(update_fields=["status"])
-            sent, failed = 0, 0
-            for email, name in recipients:
-                promo_code = ""
-                if campaign.attach_promo:
-                    pc = PromoCode.objects.create(
-                        code=_gen_promo_code(prefix=f"DI{campaign.pk}"),
-                        label=f"Campaign #{campaign.pk} – {campaign.name}",
-                        kind=campaign.promo_kind,
-                        percent_off=campaign.promo_percent_off,
-                        amount_off_cents=campaign.promo_amount_off_cents,
-                        max_uses=1, locked_to_email=email,
-                        expires_at=campaign.promo_expires_at,
-                        campaign=campaign,
-                    )
-                    promo_code = pc.code
-                try:
-                    send_email(email, campaign.subject,
-                               campaign_email_html(campaign.body, name=name, promo_code=promo_code,
-                                                   cta_label=campaign.cta_label, cta_url=campaign.cta_url,
-                                                   subject_line=""))
-                    sent += 1
-                except Exception as e:
-                    failed += 1
-                    ActivityLog.log("campaign.send_failed", f"{email}: {e}",
-                                    level="error", actor=request.user.email, campaign=campaign.pk)
-            campaign.status = "sent" if failed == 0 else ("failed" if sent == 0 else "sent")
-            campaign.sent_count = sent
-            campaign.failed_count = failed
-            campaign.last_run_at = timezone.now()
-            campaign.save(update_fields=["status", "sent_count", "failed_count", "last_run_at"])
-            ActivityLog.log("campaign.sent", f"{campaign.name} – {sent} sent, {failed} failed",
-                            level="success" if failed == 0 else "warn",
-                            actor=request.user.email, campaign=campaign.pk,
-                            recipients=len(recipients))
-            messages.success(request, f"Campaign sent: {sent} delivered, {failed} failed.")
+            from .email_queue import enqueue_campaign_email
+
+            if not recipients:
+                messages.warning(request, "No valid email recipients found.")
+                return redirect(reverse("admin:api_emailcampaign_change", args=[campaign.pk]))
+            job = enqueue_campaign_email(
+                campaign,
+                recipients=recipients,
+                actor_email=request.user.email,
+                code_factory=_gen_promo_code,
+            )
+            messages.success(request, f"Queued campaign: {len(recipients)} emails in delivery job #{job.pk}.")
             return redirect(reverse("admin:api_emailcampaign_change", args=[campaign.pk]))
         return render(request, "admin/campaign_send.html",
                       {"campaign": campaign, "recipients": recipients,
                        "title": f"Send · {campaign.name}"})
+
+
+@admin.register(EmailDeliveryJob)
+class EmailDeliveryJobAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "name", "source", "status", "total_count", "sent_count", "failed_count", "campaign")
+    list_filter = ("status", "source", "created_at")
+    search_fields = ("name", "created_by", "recipients__email")
+    readonly_fields = (
+        "name", "source", "campaign", "status", "total_count", "sent_count",
+        "failed_count", "created_by", "created_at", "started_at", "finished_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(EmailDeliveryRecipient)
+class EmailDeliveryRecipientAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "email", "subject", "job", "status", "attempts", "sent_at")
+    list_filter = ("status", "created_at", "job")
+    search_fields = ("email", "subject", "last_error", "job__name")
+    readonly_fields = ("job", "email", "subject", "html", "status", "promo_code", "attempts", "last_error", "sent_at", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 from .models import Review

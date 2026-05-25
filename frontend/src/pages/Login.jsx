@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth.jsx";
+import SEO from "../components/SEO.jsx";
 
 export default function Login() {
   const { login } = useAuth();
@@ -24,14 +25,21 @@ export default function Login() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="Login | Dolphin Island Tours"
+        description="Log in to your Dolphin Island Tours account to manage bookings and trip details."
+        canonical="/login"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-6">Welcome back</h1>
       <form onSubmit={submit} className="card p-6 sm:p-8 space-y-4">
-        <div><label className="label">Email</label>
-          <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
+        <div><label className="label" htmlFor="login-email">Email</label>
+          <input id="login-email" className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></div>
         <div>
-          <label className="label">Password</label>
+          <label className="label" htmlFor="login-password">Password</label>
           <div className="relative">
             <input
+              id="login-password"
               className="input pr-24"
               type={showPassword ? "text" : "password"}
               value={password}

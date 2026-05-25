@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth.jsx";
+import SEO from "../components/SEO.jsx";
 
 export default function Signup() {
   const { signup } = useAuth();
@@ -27,21 +28,28 @@ export default function Signup() {
   }
 
   const F = (k, label, type = "text") => (
-    <div><label className="label">{label}</label>
-      <input className="input" type={type} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} required={type !== "tel"} /></div>
+    <div><label className="label" htmlFor={`signup-${k}`}>{label}</label>
+      <input id={`signup-${k}`} className="input" type={type} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} required={type !== "tel"} /></div>
   );
 
   const setPhone = (value) => setF({ ...f, phone: value.replace(/\D/g, "").slice(0, 10) });
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="Create an Account | Dolphin Island Tours"
+        description="Create a Dolphin Island Tours account to book Merritt Island boat tours and manage trip details."
+        canonical="/signup"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-6">Create an account</h1>
       <form onSubmit={submit} className="card p-6 sm:p-8 space-y-4">
         <div className="grid sm:grid-cols-2 gap-3">{F("first_name","First name")}{F("last_name","Last name")}</div>
         {F("email","Email","email")}
         <div>
-          <label className="label">Phone</label>
+          <label className="label" htmlFor="signup-phone">Phone</label>
           <input
+            id="signup-phone"
             className="input"
             type="tel"
             inputMode="numeric"
@@ -54,9 +62,10 @@ export default function Signup() {
           <p className="mt-1 text-xs text-ocean-600">Numbers only, exactly 10 digits.</p>
         </div>
         <div>
-          <label className="label">Password (min 8 chars)</label>
+          <label className="label" htmlFor="signup-password">Password (min 8 chars)</label>
           <div className="relative">
             <input
+              id="signup-password"
               className="input pr-24"
               type={showPassword ? "text" : "password"}
               value={f.password}

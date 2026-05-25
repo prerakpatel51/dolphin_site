@@ -12,6 +12,8 @@ export default function Reviews({ tourSlug }) {
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({ count: 0, average: 0, breakdown: {} });
   const [form, setForm] = useState({ author_name: "", author_email: "", rating: 5, title: "", body: "" });
+  const [hasPaidBooking, setHasPaidBooking] = useState(false);
+  const [checkingBooking, setCheckingBooking] = useState(false);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -24,6 +26,26 @@ export default function Reviews({ tourSlug }) {
       author_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username,
       author_email: user.email,
     }));
+  }, [tourSlug, user]);
+
+  useEffect(() => {
+    let alive = true;
+    setHasPaidBooking(false);
+    if (!user || !tourSlug) return () => { alive = false; };
+    setCheckingBooking(true);
+    api.myBookings()
+      .then(d => {
+        if (!alive) return;
+        const bookings = d.results || d;
+        setHasPaidBooking(bookings.some(b => b.status === "paid" && b.slot?.tour?.slug === tourSlug));
+      })
+      .catch(() => {
+        if (alive) setHasPaidBooking(false);
+      })
+      .finally(() => {
+        if (alive) setCheckingBooking(false);
+      });
+    return () => { alive = false; };
   }, [tourSlug, user]);
 
   const myReview = user ? reviews.find(r => r.mine) : null;
@@ -40,7 +62,7 @@ export default function Reviews({ tourSlug }) {
   }
 
   return (
-    <section className="mt-12 sm:mt-16">
+    <section id="reviews" className="mt-12 sm:mt-16 scroll-mt-24">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <p className="uppercase tracking-[0.3em] text-ocean-500 text-xs mb-2">Guest reviews</p>
@@ -92,10 +114,21 @@ export default function Reviews({ tourSlug }) {
           <p className="text-ocean-700 mb-4">Log in to share your experience. Verified guests are approved automatically.</p>
           <Link to={`/login?next=/tours/${tourSlug}`} className="btn-primary">Log in to review</Link>
         </div>
+      ) : checkingBooking ? (
+        <div className="card p-5 sm:p-8">
+          <h3 className="text-2xl mb-2">Checking your bookings…</h3>
+          <p className="text-ocean-700">Review access is available for guests with a paid booking for this tour.</p>
+        </div>
+      ) : !hasPaidBooking ? (
+        <div className="card p-5 sm:p-8 text-center">
+          <h3 className="text-2xl mb-2">Reviews are for verified guests.</h3>
+          <p className="text-ocean-700 mb-4">After you book and complete this tour, you can share your experience here.</p>
+          <Link to={`/bookings`} className="btn-ghost">View my bookings</Link>
+        </div>
       ) : (
         <div className="card p-5 sm:p-8">
           <h3 className="text-2xl mb-2">Leave a review</h3>
-          <p className="text-ocean-700 text-sm mb-5">Verified bookings are auto-approved. Others are reviewed before publishing.</p>
+          <p className="text-ocean-700 text-sm mb-5">Your paid booking verifies this review, so it can appear for future guests.</p>
           {sent ? (
             <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-emerald-900">
               <p className="font-semibold">Thanks for the review!</p>
@@ -104,20 +137,21 @@ export default function Reviews({ tourSlug }) {
           ) : (
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="label">Your rating</label>
+                <label className="label" htmlFor="review-rating">Your rating</label>
                 <StarInput value={form.rating} onChange={v => setForm(f => ({ ...f, rating: v }))} />
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
-                <div><label className="label">Your name *</label>
-                  <input className="input" required value={form.author_name}
+                <div><label className="label" htmlFor="review-author-name">Your name *</label>
+                  <input id="review-author-name" className="input" required value={form.author_name}
                     onChange={e => setForm({ ...form, author_name: e.target.value })} /></div>
-                <div><label className="label">Email (private)</label>
-                  <input type="email" className="input" value={form.author_email}
+                <div><label className="label" htmlFor="review-author-email">Email (private)</label>
+                  <input id="review-author-email" type="email" className="input" value={form.author_email}
                     onChange={e => setForm({ ...form, author_email: e.target.value })} /></div>
               </div>
               <div>
-                <label className="label">Title (optional)</label>
+                <label className="label" htmlFor="review-title">Title (optional)</label>
                 <input
+                  id="review-title"
                   className="input"
                   maxLength={REVIEW_TITLE_MAX}
                   value={form.title}
@@ -128,8 +162,9 @@ export default function Reviews({ tourSlug }) {
                 </div>
               </div>
               <div>
-                <label className="label">Your review *</label>
+                <label className="label" htmlFor="review-body">Your review *</label>
                 <textarea
+                  id="review-body"
                   required
                   maxLength={REVIEW_BODY_MAX}
                   className="input min-h-[120px]"

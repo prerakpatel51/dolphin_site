@@ -42,21 +42,25 @@ def send_email(to, subject, html):
 
 
 def booking_receipt_html(booking):
+    customer_name = escape(booking.customer_name)
+    booking_id = escape(str(booking.id))
+    slot_date = escape(str(booking.slot.date))
+    slot_time = escape(str(booking.slot.time))
     travelers = ""
     if booking.travelers:
         rows = "".join(
-            f"<li>{escape(str(t.get('name', '')))} — age {escape(str(t.get('age', '')))}</li>"
+            f"<li>{escape(str(t.get('name', '')))} - age {escape(str(t.get('age', '')))}</li>"
             for t in booking.travelers
         )
         travelers = f"<p><b>Travelers:</b></p><ol>{rows}</ol>"
     return f"""
     <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0b3a52">
       <h2 style="color:#0b6a8a">Booking Confirmed</h2>
-      <p>Hi {booking.customer_name}, thanks for booking with Dolphin Island Tours!</p>
+      <p>Hi {customer_name}, thanks for booking with Dolphin Island Tours!</p>
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
-        <tr><td><b>Confirmation #</b></td><td>{booking.id}</td></tr>
-        <tr><td><b>Date</b></td><td>{booking.slot.date}</td></tr>
-        <tr><td><b>Time</b></td><td>{booking.slot.time}</td></tr>
+        <tr><td><b>Confirmation #</b></td><td>{booking_id}</td></tr>
+        <tr><td><b>Date</b></td><td>{slot_date}</td></tr>
+        <tr><td><b>Time</b></td><td>{slot_time}</td></tr>
         <tr><td><b>Party</b></td><td>{booking.party_size} guests</td></tr>
         <tr><td><b>Tax</b></td><td>${booking.tax_cents/100:.2f}</td></tr>
         <tr><td><b>Total paid</b></td><td>${booking.total_cents/100:.2f}</td></tr>
@@ -70,20 +74,24 @@ def booking_receipt_html(booking):
 
 
 def contact_admin_html(msg):
+    phone = f" - {escape(msg.phone)}" if msg.phone else ""
+    subject = escape(msg.subject or "(none)")
+    message = linebreaks(escape(msg.message))
     return f"""
     <h3>New contact inquiry</h3>
-    <p><b>{msg.name}</b> &lt;{msg.email}&gt;{(' · ' + msg.phone) if msg.phone else ''}</p>
-    <p><b>Subject:</b> {msg.subject or '(none)'}</p>
-    <blockquote style="border-left:3px solid #1389b1;padding-left:12px;color:#0b3a52">{msg.message}</blockquote>
+    <p><b>{escape(msg.name)}</b> &lt;{escape(msg.email)}&gt;{phone}</p>
+    <p><b>Subject:</b> {subject}</p>
+    <blockquote style="border-left:3px solid #1389b1;padding-left:12px;color:#0b3a52">{message}</blockquote>
     """
 
 
 def contact_ack_html(msg):
+    message = linebreaks(escape(msg.message))
     return f"""
     <div style="font-family:system-ui,sans-serif;max-width:560px;color:#0b3a52">
-      <h2 style="color:#0b6a8a">Thanks {msg.name}!</h2>
+      <h2 style="color:#0b6a8a">Thanks {escape(msg.name)}!</h2>
       <p>We got your message and will reply within one business day. For urgent bookings, call us or reply to this email.</p>
-      <hr><p style="color:#666;font-size:12px">Your message:<br>{msg.message}</p>
+      <hr><p style="color:#666;font-size:12px">Your message:<br>{message}</p>
     </div>
     """
 
@@ -192,28 +200,32 @@ def password_reset_html(reset_url, name=""):
 
 
 def booking_cancelled_html(booking, reason, alternatives=None):
+    customer_name = escape(booking.customer_name)
+    tour_name = escape(booking.slot.tour.name)
+    slot_date = escape(str(booking.slot.date))
+    slot_time = escape(str(booking.slot.time))
     alt_html = ""
     if alternatives:
         rows = "".join(
-            f"<li>{s['date']} at {s['time']} — {s['seats_remaining']} seats</li>"
+            f"<li>{escape(str(s['date']))} at {escape(str(s['time']))} - {escape(str(s['seats_remaining']))} seats</li>"
             for s in alternatives[:8]
         )
         alt_html = f"""
-        <p><b>Other available departures for {booking.slot.tour.name}:</b></p>
+        <p><b>Other available departures for {tour_name}:</b></p>
         <ul>{rows}</ul>
-        <p>Reply to this email with the date/time you'd like and we'll move your booking — no extra charge.</p>
+        <p>Reply to this email with the date/time you'd like and we'll move your booking - no extra charge.</p>
         """
     return f"""
     <div style="font-family:system-ui,sans-serif;max-width:560px;color:#0b3a52">
       <h2 style="color:#b91c1c">Your tour was cancelled</h2>
-      <p>Hi {booking.customer_name}, we're sorry — we had to cancel your {booking.slot.tour.name}
-      on {booking.slot.date} at {booking.slot.time}.</p>
-      <p><b>Reason:</b> {reason}</p>
+      <p>Hi {customer_name}, we're sorry - we had to cancel your {tour_name}
+      on {slot_date} at {slot_time}.</p>
+      <p><b>Reason:</b> {escape(reason)}</p>
       {alt_html}
       <hr>
-      <p><b>Booking #:</b> {booking.id}<br>
+      <p><b>Booking #:</b> {escape(str(booking.id))}<br>
       <b>Party:</b> {booking.party_size} guests<br>
-      <b>Amount paid:</b> ${booking.total_cents/100:.2f} — full refund will be processed within 5–7 business days.</p>
+      <b>Amount paid:</b> ${booking.total_cents/100:.2f} - full refund will be processed within 5-7 business days.</p>
       <p>Questions? Reply to this email or contact lewis@dolphinislandtours.com.</p>
     </div>
     """
@@ -222,8 +234,8 @@ def booking_cancelled_html(booking, reason, alternatives=None):
 def admin_notify_html(booking):
     return f"""
     <h3>New booking</h3>
-    <p>{booking.customer_name} ({booking.customer_email}) booked {booking.party_size} guests
-    for {booking.slot.date} {booking.slot.time}. Total ${booking.total_cents/100:.2f}.</p>
-    <p>Phone: {booking.customer_phone or 'n/a'}<br>
-    Notes: {booking.special_requests or 'none'}</p>
+    <p>{escape(booking.customer_name)} ({escape(booking.customer_email)}) booked {booking.party_size} guests
+    for {escape(str(booking.slot.date))} {escape(str(booking.slot.time))}. Total ${booking.total_cents/100:.2f}.</p>
+    <p>Phone: {escape(booking.customer_phone or 'n/a')}<br>
+    Notes: {linebreaks(escape(booking.special_requests or 'none'))}</p>
     """

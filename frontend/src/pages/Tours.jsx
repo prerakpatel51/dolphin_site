@@ -8,7 +8,13 @@ import SEO from "../components/SEO.jsx";
 export default function Tours() {
   const [tours, setTours] = useState([]);
   const { site, page } = useSite("tours");
-  useEffect(() => { api.tours().then(d => setTours(d.results || d)); }, []);
+  useEffect(() => {
+    let alive = true;
+    api.tours().then(d => {
+      if (alive) setTours(d.results || d);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   return (
     <div>
       <SEO
@@ -34,7 +40,7 @@ export default function Tours() {
         ])}
       />
       <section className="relative h-[35vh] min-h-[260px] overflow-hidden">
-        <img src={page.hero_image_url || "/images/sunset-water.jpg"} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={page.hero_image_url || "/images/sunset-water.jpg"} alt="" fetchPriority="high" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-ocean-950/55" />
         <div className="relative max-w-6xl mx-auto px-4 h-full flex flex-col justify-end pb-8 sm:pb-10">
           <p className="uppercase tracking-[0.25em] sm:tracking-[0.3em] text-ocean-200 text-[10px] sm:text-xs mb-2 sm:mb-3">{page.hero_eyebrow}</p>
@@ -47,7 +53,7 @@ export default function Tours() {
           {tours.map(t => (
             <Link key={t.id} to={`/tours/${t.slug}`} className="card overflow-hidden group relative">
               <div className="aspect-[4/3] overflow-hidden bg-ocean-100">
-                <img src={t.image_url || "/images/welcome.jpg"} alt={t.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[1.2s]" />
+                <img src={t.image_url || "/images/welcome.jpg"} alt={t.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[1.2s]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-ocean-950/70 via-ocean-950/20 to-transparent" />
               </div>
               <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 text-white">

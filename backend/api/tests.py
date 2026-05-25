@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils.encoding import force_bytes
@@ -16,6 +17,8 @@ from .models import (
     ActivityLog,
     Booking,
     ContactMessage,
+    EmailDeliveryJob,
+    EmailDeliveryRecipient,
     EmailCampaign,
     MailingListEntry,
     PageContent,
@@ -82,7 +85,10 @@ class ApiTestCase(TestCase):
     def token_for(self, email=TEST_USER_EMAIL, password="StrongPass123"):
         res = self.post_json("/api/auth/login/", {"email": email, "password": password})
         self.assertEqual(res.status_code, 200, res.content)
-        return res.json()["access"]
+        self.assertEqual(res.json(), {"ok": True})
+        self.assertTrue(res.cookies["access_token"]["httponly"])
+        self.assertTrue(res.cookies["refresh_token"]["httponly"])
+        return res.cookies["access_token"].value
 
     def booking_payload(self, **overrides):
         payload = {
@@ -118,6 +124,28 @@ class ApiTestCase(TestCase):
                 for i in range(party_size)
             ],
         )
+
+    def create_pending_booking(self, slot=None, party_size=2, minutes_old=20):
+        slot = slot or self.slot
+        booking = Booking.objects.create(
+            user=self.user,
+            slot=slot,
+            party_size=party_size,
+            price_per_person_cents=slot.tour.price_per_person * 100,
+            total_cents=slot.tour.price_per_person * 100 * party_size,
+            status="pending",
+            customer_name="Guest User",
+            customer_email=self.user.email,
+            travelers=[
+                {"name": f"Guest {i + 1}", "age": 30 + i}
+                for i in range(party_size)
+            ],
+        )
+        Booking.objects.filter(pk=booking.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=minutes_old)
+        )
+        booking.refresh_from_db()
+        return booking
 
 
 class PublicSiteAndSeoTests(ApiTestCase):
@@ -217,6 +245,52 @@ class PublicSiteAndSeoTests(ApiTestCase):
         self.assertContains(site_res, 'name="seo_description"')
         self.assertContains(page_res, 'name="seo_keywords"')
         self.assertContains(tour_res, 'name="og_image"')
+
+    def test_admin_can_create_user_with_required_profile_fields(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+            first_name="Admin",
+            last_name="User",
+            phone="5550000000",
+        )
+        self.client.force_login(admin_user)
+
+        res = self.client.post(reverse("admin:api_user_add"), {
+            "email": "admin-created@example.com",
+            "username": "admincreated",
+            "first_name": "Admin",
+            "last_name": "Created",
+            "phone": "5550000002",
+            "accepts_marketing": "on",
+            "password1": "StrongPass123!",
+            "password2": "StrongPass123!",
+        }, follow=True)
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(User.objects.filter(email="admin-created@example.com").exists())
+
+    def test_admin_booking_list_displays_square_payment_references(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+            first_name="Admin",
+            last_name="User",
+            phone="5550000000",
+        )
+        self.create_paid_booking()
+        Booking.objects.update(
+            square_payment_id="sq-payment-test",
+            square_order_id="sq-order-test",
+        )
+        self.client.force_login(admin_user)
+
+        res = self.client.get(reverse("admin:api_booking_changelist"))
+
+        self.assertContains(res, "sq-payment-test")
+        self.assertContains(res, "sq-order-test")
 
 
 class AuthContactAndSlotSafetyTests(ApiTestCase):
@@ -346,7 +420,41 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(confirmed.json(), {"ok": True})
         self.assertEqual(old_login.status_code, 401)
         self.assertEqual(new_login.status_code, 200)
+        self.assertNotIn("access", new_login.json())
+        self.assertIn("access_token", new_login.cookies)
         self.assertTrue(ActivityLog.objects.filter(action="auth.reset_completed", actor=TEST_USER_EMAIL).exists())
+
+    def test_cookie_login_authenticates_me_without_exposing_tokens_to_javascript(self):
+        login = self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "StrongPass123"})
+        me = self.client.get("/api/auth/me/")
+
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json(), {"ok": True})
+        self.assertNotIn("access", login.json())
+        self.assertEqual(login.cookies["access_token"]["httponly"], True)
+        self.assertEqual(login.cookies["refresh_token"]["httponly"], True)
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json()["email"], TEST_USER_EMAIL)
+
+    def test_profile_password_update_hashes_new_password(self):
+        token = self.token_for()
+
+        res = self.client.patch(
+            "/api/auth/me/",
+            data=json.dumps({
+                "password": "NewStrongPass123",
+                "first_name": "Guest",
+                "last_name": "User",
+                "phone": "5550000100",
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.user.refresh_from_db()
+
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertNotEqual(self.user.password, "NewStrongPass123")
+        self.assertTrue(self.user.check_password("NewStrongPass123"))
 
     def test_private_endpoints_require_authentication(self):
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
@@ -365,6 +473,32 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(res.status_code, 201)
         self.assertTrue(ContactMessage.objects.filter(email="visitor@example.com").exists())
         self.assertTrue(ActivityLog.objects.filter(action="contact.received", actor="visitor@example.com").exists())
+
+    def test_signup_and_contact_rate_limits_block_abuse(self):
+        signup_responses = [
+            self.post_json("/api/auth/signup/", {
+                "email": f"rate-{i}@example.com",
+                "password": "StrongPass123",
+                "first_name": "Rate",
+                "last_name": "Limit",
+                "phone": "5550009999",
+            })
+            for i in range(6)
+        ]
+        cache.clear()
+        contact_responses = [
+            self.post_json("/api/contact/", {
+                "name": "Visitor",
+                "email": f"visitor-{i}@example.com",
+                "message": "Can we bring kids?",
+            })
+            for i in range(6)
+        ]
+
+        self.assertEqual([r.status_code for r in signup_responses[:5]], [201] * 5)
+        self.assertEqual(signup_responses[5].status_code, 429)
+        self.assertEqual([r.status_code for r in contact_responses[:5]], [201] * 5)
+        self.assertEqual(contact_responses[5].status_code, 429)
 
     def test_slots_and_dates_hide_past_inactive_and_full_departures(self):
         past = TourSlot.objects.create(
@@ -398,6 +532,37 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(full.seats_remaining, 0)
         self.assertNotIn(full.date.isoformat(), dates)
 
+    def test_slot_detail_returns_one_bookable_departure(self):
+        res = self.client.get(f"/api/slots/{self.slot.id}/")
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["id"], self.slot.id)
+        self.assertEqual(res.json()["tour"]["slug"], self.tour.slug)
+        self.assertEqual(res.json()["seats_remaining"], self.slot.capacity)
+
+    @override_settings(PENDING_BOOKING_EXPIRY_MINUTES=15)
+    def test_stale_pending_booking_holds_expire_and_release_seats(self):
+        pending = self.create_pending_booking(party_size=5, minutes_old=20)
+
+        slots = self.client.get("/api/slots/?tour=wildlife").json()
+        pending.refresh_from_db()
+
+        self.assertEqual(pending.status, "expired")
+        self.assertEqual(slots[0]["seats_remaining"], 6)
+        self.assertTrue(ActivityLog.objects.filter(action="booking.pending_expired").exists())
+
+    @override_settings(PENDING_BOOKING_EXPIRY_MINUTES=15)
+    def test_expire_pending_bookings_management_command(self):
+        stale = self.create_pending_booking(party_size=2, minutes_old=20)
+        fresh = self.create_pending_booking(party_size=2, minutes_old=5)
+
+        call_command("expire_pending_bookings", verbosity=0)
+        stale.refresh_from_db()
+        fresh.refresh_from_db()
+
+        self.assertEqual(stale.status, "expired")
+        self.assertEqual(fresh.status, "pending")
+
 
 @override_settings(FAKE_PAYMENTS=True, RESEND_API_KEY="", SMTP_HOST="", ADMIN_EMAIL="admin@example.com")
 class BookingAndPromoTests(ApiTestCase):
@@ -425,6 +590,31 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(Booking.objects.count(), 0)
         self.assertTrue(ActivityLog.objects.filter(action="booking.missing_source").exists())
+
+    @override_settings(FAKE_PAYMENTS=False)
+    def test_declined_payment_marks_attempt_failed_without_sending_receipt(self):
+        token = self.token_for()
+
+        with patch("api.views.charge", side_effect=RuntimeError("Square error: CARD_DECLINED")), \
+             patch("api.views.send_email") as send:
+            res = self.post_json(
+                "/api/bookings/create-and-pay/",
+                self.booking_payload(source_id="cnon:card-nonce"),
+                token=token,
+            )
+
+        self.assertEqual(res.status_code, 402)
+        self.assertIn("No charge was made", res.json()["detail"])
+        booking = Booking.objects.get()
+        self.assertEqual(booking.status, "payment_failed")
+        self.assertFalse(booking.square_payment_id)
+        send.assert_not_called()
+        self.assertTrue(
+            ActivityLog.objects.filter(
+                action="booking.payment_failed",
+                message__contains="CARD_DECLINED",
+            ).exists()
+        )
 
     def test_booking_validation_rejects_party_limits_capacity_and_past_slots(self):
         token = self.token_for()
@@ -461,6 +651,15 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(res.status_code, 200)
         ids = {row["id"] for row in res.json()}
         self.assertEqual(ids, {str(own.id)})
+
+    def test_paid_bookings_cannot_be_hard_deleted_through_api(self):
+        token = self.token_for()
+        booking = self.create_paid_booking()
+
+        res = self.client.delete(f"/api/bookings/{booking.id}/", HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        self.assertEqual(res.status_code, 405)
+        self.assertTrue(Booking.objects.filter(pk=booking.pk, status="paid").exists())
 
     def test_promo_validation_handles_percent_amount_locked_inactive_and_expired_codes(self):
         PromoCode.objects.create(code="TEN", kind="percent", percent_off=10, max_uses=0)
@@ -532,30 +731,39 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertFalse(validate_again.json()["valid"])
 
-    def test_locked_promo_can_only_be_used_by_matching_customer_email(self):
+    def test_locked_promo_authorization_uses_authenticated_user_email(self):
         token = self.token_for()
         PromoCode.objects.create(
             code="OWNER",
             kind="amount",
             amount_off_cents=5000,
             locked_to_email=TEST_USER_EMAIL,
-            max_uses=1,
+            max_uses=0,
         )
 
-        wrong = self.post_json(
+        authorized_user_with_different_customer_email = self.post_json(
             "/api/bookings/create-and-pay/",
             self.booking_payload(customer_email="other@example.com", promo_code="OWNER"),
             token=token,
         )
-        right = self.post_json(
+        attacker = User.objects.create_user(
+            username="attacker",
+            email="attacker@example.com",
+            password="StrongPass123",
+            first_name="Attack",
+            last_name="User",
+            phone="5550009998",
+        )
+        attacker_token = self.token_for("attacker@example.com", "StrongPass123")
+        attacker_spoofing_customer_email = self.post_json(
             "/api/bookings/create-and-pay/",
             self.booking_payload(customer_email=TEST_USER_EMAIL.upper(), promo_code="OWNER"),
-            token=token,
+            token=attacker_token,
         )
 
-        self.assertEqual(wrong.status_code, 400)
-        self.assertEqual(right.status_code, 201, right.content)
-        self.assertEqual(right.json()["discount_cents"], 5000)
+        self.assertEqual(authorized_user_with_different_customer_email.status_code, 201)
+        self.assertEqual(authorized_user_with_different_customer_email.json()["discount_cents"], 5000)
+        self.assertEqual(attacker_spoofing_customer_email.status_code, 400)
 
     def test_booking_total_includes_admin_tax_rate(self):
         token = self.token_for()
@@ -669,7 +877,7 @@ class AdminMarketingPromoTests(ApiTestCase):
 
         self.assertEqual(emails, {TEST_USER_EMAIL, "list@example.com", "manual@example.com"})
 
-    def test_campaign_admin_send_generates_unique_locked_single_use_promo_codes(self):
+    def test_campaign_admin_send_queues_unique_locked_single_use_promo_codes(self):
         admin_user = User.objects.create_superuser(
             username="admin",
             email="admin@example.com",
@@ -689,18 +897,81 @@ class AdminMarketingPromoTests(ApiTestCase):
         )
         self.client.force_login(admin_user)
 
-        with patch("api.emails.send_email", return_value=None):
-            res = self.client.post(reverse("admin:campaign-send", args=[campaign.pk]))
+        res = self.client.post(reverse("admin:campaign-send", args=[campaign.pk]))
 
         self.assertEqual(res.status_code, 302)
         campaign.refresh_from_db()
-        self.assertEqual(campaign.status, "sent")
-        self.assertEqual(campaign.sent_count, 2)
+        self.assertEqual(campaign.status, "sending")
+        self.assertEqual(campaign.sent_count, 0)
+        job = EmailDeliveryJob.objects.get(campaign=campaign)
+        self.assertEqual(job.status, "queued")
+        self.assertEqual(job.total_count, 2)
+        self.assertEqual(job.recipients.count(), 2)
         codes = PromoCode.objects.filter(campaign=campaign)
         self.assertEqual(codes.count(), 2)
         self.assertEqual({c.max_uses for c in codes}, {1})
         self.assertEqual({c.used_count for c in codes}, {0})
         self.assertEqual({c.locked_to_email for c in codes}, {"one@example.com", "two@example.com"})
+
+        with patch("api.email_queue.send_email", return_value=None) as send:
+            call_command("process_email_queue", once=True, batch_size=10)
+
+        campaign.refresh_from_db()
+        job.refresh_from_db()
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(campaign.status, "sent")
+        self.assertEqual(campaign.sent_count, 2)
+        self.assertEqual(job.status, "sent")
+        self.assertEqual(EmailDeliveryRecipient.objects.filter(status="sent").count(), 2)
+
+    def test_admin_can_add_contact_message_from_button(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+        )
+        self.client.force_login(admin_user)
+
+        add = self.client.post(reverse("admin:api_contactmessage_add"), {
+            "name": "Manual Contact",
+            "email": "manual-contact@example.com",
+            "phone": "5550001234",
+            "subject": "Manual note",
+            "message": "Added by admin.",
+            "handled": "",
+            "_save": "Save",
+        }, follow=True)
+
+        self.assertEqual(add.status_code, 200)
+        self.assertTrue(ContactMessage.objects.filter(email="manual-contact@example.com").exists())
+
+    def test_admin_can_add_selected_app_users_to_mailing_list(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+        )
+        app_user = User.objects.create_user(
+            username="appuser",
+            email="app-user@example.com",
+            password="StrongPass123",
+            first_name="App",
+            last_name="User",
+            phone="5550001234",
+            accepts_marketing=True,
+        )
+        self.client.force_login(admin_user)
+
+        res = self.client.post(reverse("admin:api_user_changelist"), {
+            "action": "add_to_mailing_list",
+            "_selected_action": [app_user.pk],
+        }, follow=True)
+
+        self.assertEqual(res.status_code, 200)
+        entry = MailingListEntry.objects.get(email="app-user@example.com")
+        self.assertEqual(entry.name, "App User")
+        self.assertEqual(entry.tags, "app-user")
+        self.assertTrue(entry.subscribed)
 
     def test_promotional_email_action_recipient_helper_dedupes_selected_and_extra_emails(self):
         contacts = [
@@ -716,3 +987,39 @@ class AdminMarketingPromoTests(ApiTestCase):
         )
 
         self.assertEqual(recipients, ["a@example.com", "b@example.com", "extra@example.com"])
+
+    def test_bulk_promotional_admin_action_queues_email_job_without_sending_inline(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+        )
+        contact = ContactMessage.objects.create(
+            name="Visitor",
+            email="visitor@example.com",
+            subject="Question",
+            message="Hi",
+        )
+        self.client.force_login(admin_user)
+
+        with patch("api.email_queue.send_email") as send:
+            res = self.client.post(reverse("admin:api_contactmessage_changelist"), {
+                "action": "send_promotional_email",
+                "_selected_action": [contact.pk],
+                "apply": "1",
+                "subject": "Bulk QA",
+                "message": "Hello from QA.",
+                "cta_label": "",
+                "cta_url": "",
+                "extra_emails": "extra@example.com",
+            }, follow=True)
+
+        self.assertEqual(res.status_code, 200)
+        send.assert_not_called()
+        job = EmailDeliveryJob.objects.get(source="bulk:contact messages")
+        self.assertEqual(job.status, "queued")
+        self.assertEqual(job.total_count, 2)
+        self.assertEqual(
+            set(job.recipients.values_list("email", flat=True)),
+            {"visitor@example.com", "extra@example.com"},
+        )

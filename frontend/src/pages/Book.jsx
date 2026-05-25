@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { useSite } from "../lib/site.js";
 import { trackBookingConversion } from "../lib/tracking.js";
+import SEO from "../components/SEO.jsx";
 
 export default function Book() {
   const { slug } = useParams();
@@ -13,8 +15,6 @@ export default function Book() {
   const { site } = useSite("tours");
   const nav = useNavigate();
 
-  const [cfg, setCfg] = useState(null);
-  const [slot, setSlot] = useState(null);
   const [pending, setPending] = useState(null);
   const [pendingMissing, setPendingMissing] = useState(false);
   const [form, setForm] = useState({
@@ -32,66 +32,107 @@ export default function Book() {
   const [promo, setPromo] = useState(null);
   const [promoErr, setPromoErr] = useState("");
   const [promoBusy, setPromoBusy] = useState(false);
+  const [cardError, setCardError] = useState("");
+
+  const bookingQuery = useQuery({
+    queryKey: ["bookingCheckout", slug, slotId],
+    enabled: !!slotId,
+    queryFn: async () => {
+      const [nextCfg, found] = await Promise.all([
+        api.config(),
+        api.slot(slotId),
+      ]);
+      if (found.tour?.slug !== slug) {
+        throw new Error("This departure does not belong to that tour.");
+      }
+      return { cfg: nextCfg, slot: found };
+    },
+  });
+  const cfg = bookingQuery.data?.cfg || null;
+  const slot = bookingQuery.data?.slot || null;
+  const loadError = !slotId
+    ? "Missing departure."
+    : bookingQuery.error?.message || "";
 
   useEffect(() => {
-    api.config().then(setCfg);
-    api.slots(slug).then(d => {
-      const list = d.results || d;
-      const found = list.find(s => String(s.id) === String(slotId));
-      setSlot(found);
-      if (found) {
-        const raw = sessionStorage.getItem(`pendingBooking:${found.id}`);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            const travelers = Array.isArray(parsed.travelers) ? parsed.travelers : [];
-            setPending({
-              slot_id: found.id,
-              tour_slug: slug,
-              party_size: Number(parsed.party_size || travelers.length || found.tour?.min_party || 1),
-              travelers,
-            });
-            setPendingMissing(false);
-          } catch {
-            setPending(null);
-            setPendingMissing(true);
-          }
-        } else {
-          setPending(null);
-          setPendingMissing(true);
-        }
-      }
-    });
     if (user) setForm(f => ({ ...f,
       customer_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username,
       customer_email: user.email, customer_phone: user.phone || "" }));
-  }, [slug, slotId, user]);
+  }, [user]);
 
   useEffect(() => {
+    if (!slot) {
+      setPending(null);
+      setPendingMissing(false);
+      return;
+    }
+    const raw = sessionStorage.getItem(`pendingBooking:${slot.id}`);
+    if (!raw) {
+      setPending(null);
+      setPendingMissing(true);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      const travelers = Array.isArray(parsed.travelers) ? parsed.travelers : [];
+      setPending({
+        slot_id: slot.id,
+        tour_slug: slug,
+        party_size: Number(parsed.party_size || travelers.length || slot.tour?.min_party || 1),
+        travelers,
+      });
+      setPendingMissing(false);
+    } catch {
+      setPending(null);
+      setPendingMissing(true);
+    }
+  }, [slot, slug]);
+
+  useEffect(() => {
+    setCardError("");
     if (!cfg || !slot || cfg.fake_payments) return;
     let disposed = false;
     async function init() {
-      if (!cfg.square_app_id || !window.Square || !cardEl.current) return;
+      setCardReady(false);
+      if (!cfg.square_app_id || !cfg.square_location_id) {
+        setCardError("Payment configuration is missing. Please contact us to finish this booking.");
+        return;
+      }
+      if (!cardEl.current) return;
+      const deadline = Date.now() + 8000;
+      while (!disposed && !window.Square && Date.now() < deadline) {
+        await new Promise(resolve => window.setTimeout(resolve, 100));
+      }
+      if (disposed) return;
+      if (!window.Square) {
+        setCardError("The secure Square payment form did not load. Check your connection, disable script blockers, or refresh the page.");
+        return;
+      }
       setCardReady(false);
       cardRef.current = null;
       cardEl.current.innerHTML = "";
-      const payments = window.Square.payments(cfg.square_app_id, cfg.square_location_id);
-      const c = await payments.card();
-      if (disposed) {
-        c.destroy?.();
-        return;
+      try {
+        const payments = window.Square.payments(cfg.square_app_id, cfg.square_location_id);
+        const c = await payments.card();
+        if (disposed) {
+          c.destroy?.();
+          return;
+        }
+        await c.attach(cardEl.current);
+        if (disposed) {
+          c.destroy?.();
+          return;
+        }
+        cardRef.current = c;
+        setCardReady(true);
+      } catch (e) {
+        if (!disposed) setCardError(e.message || "Square payment form could not be started. Please refresh and try again.");
       }
-      await c.attach(cardEl.current);
-      if (disposed) {
-        c.destroy?.();
-        return;
-      }
-      cardRef.current = c;
-      setCardReady(true);
     }
-    init();
+    const timer = window.setTimeout(init, 800);
     return () => {
       disposed = true;
+      window.clearTimeout(timer);
       setCardReady(false);
       cardRef.current?.destroy?.();
       cardRef.current = null;
@@ -101,8 +142,27 @@ export default function Book() {
 
   if (!user) return (
     <div className="max-w-md mx-auto p-10 text-center">
+      <SEO
+        title="Login to Book | Dolphin Island Tours"
+        description="Log in before completing your Dolphin Island Tours booking."
+        canonical={`/book/${slug}`}
+        robots="noindex, follow"
+      />
       <p className="mb-4">Please log in to book.</p>
       <Link className="btn-primary" to={`/login?next=/book/${slug}?slot=${slotId}`}>Login</Link>
+    </div>
+  );
+  if (loadError) return (
+    <div className="max-w-md mx-auto px-4 py-16 text-center">
+      <SEO
+        title="Departure Unavailable | Dolphin Island Tours"
+        description="This Dolphin Island Tours departure is unavailable. Choose another Merritt Island boat tour date or time."
+        canonical={`/book/${slug}`}
+        robots="noindex, follow"
+      />
+      <h1 className="text-3xl sm:text-4xl mb-3">Departure unavailable</h1>
+      <p className="text-ocean-700 mb-6">{loadError}</p>
+      <Link className="btn-primary" to={`/tours/${slug}`}>Choose another departure</Link>
     </div>
   );
   if (!cfg || !slot) return <div className="p-10">Loading…</div>;
@@ -167,6 +227,12 @@ export default function Book() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
+      <SEO
+        title={`Book ${tour.name || "a Tour"} | Dolphin Island Tours`}
+        description="Complete your Dolphin Island Tours booking securely with traveler details, promo code, and payment."
+        canonical={`/book/${slug}`}
+        robots="noindex, follow"
+      />
       <div className="mb-6 sm:mb-8">
         <p className="uppercase tracking-[0.18em] text-ocean-500 text-xs mb-2">Step 2</p>
         <h1 className="text-3xl sm:text-4xl mb-2">Contact & payment</h1>
@@ -192,9 +258,10 @@ export default function Book() {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Full name" value={form.customer_name} onChange={v => setForm(f => ({ ...f, customer_name: v }))} required />
-            <Field label="Email" type="email" value={form.customer_email} onChange={v => setForm(f => ({ ...f, customer_email: v }))} required />
+            <Field id="booking-name" label="Full name" value={form.customer_name} onChange={v => setForm(f => ({ ...f, customer_name: v }))} required />
+            <Field id="booking-email" label="Email" type="email" value={form.customer_email} onChange={v => setForm(f => ({ ...f, customer_email: v }))} required />
             <Field
+              id="booking-phone"
               label="Phone"
               value={form.customer_phone}
               onChange={v => setForm(f => ({ ...f, customer_phone: v.replace(/\D/g, "").slice(0, 10) }))}
@@ -206,8 +273,8 @@ export default function Book() {
             />
           </div>
           <div>
-            <label className="label">Special requests (optional)</label>
-            <textarea className="input min-h-[96px]" value={form.special_requests}
+            <label className="label" htmlFor="booking-special-requests">Special requests (optional)</label>
+            <textarea id="booking-special-requests" className="input min-h-[96px]" value={form.special_requests}
               onChange={e => setForm(f => ({ ...f, special_requests: e.target.value }))} />
           </div>
 
@@ -232,9 +299,14 @@ export default function Book() {
                   ref={cardEl}
                   className="square-card-host min-h-[58px] rounded-xl border border-ocean-200 bg-white p-2 sm:p-3"
                 />
-                {!cardReady && (
+                {!cardReady && !cardError && (
                   <div className="mt-3 rounded-lg bg-ocean-50 px-3 py-2 text-sm text-ocean-700">
                     Loading secure card field…
+                  </div>
+                )}
+                {cardError && (
+                  <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                    {cardError}
                   </div>
                 )}
               </div>
@@ -243,7 +315,7 @@ export default function Book() {
           )}
 
           <div className="border-t border-ocean-100 pt-5">
-            <label className="label">Promo code (optional)</label>
+            <label className="label" htmlFor="booking-promo-code">Promo code (optional)</label>
             {promo?.valid ? (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3">
                 <div>
@@ -257,7 +329,7 @@ export default function Book() {
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row gap-2">
-                <input className="input flex-1 uppercase tracking-wider min-w-0" value={promoInput}
+                <input id="booking-promo-code" className="input flex-1 uppercase tracking-wider min-w-0" value={promoInput}
                   onChange={e => setPromoInput(e.target.value.toUpperCase())}
                   placeholder="E.g. DI1-AB23CD" />
                 <button type="button" disabled={!promoInput || promoBusy}
@@ -320,11 +392,12 @@ export default function Book() {
   );
 }
 
-function Field({ label, value, onChange, type = "text", required, helper, inputMode, pattern, maxLength }) {
+function Field({ id, label, value, onChange, type = "text", required, helper, inputMode, pattern, maxLength }) {
   return (
     <div>
-      <label className="label">{label}{required && " *"}</label>
+      <label className="label" htmlFor={id}>{label}{required && " *"}</label>
       <input
+        id={id}
         className="input"
         type={type}
         value={value}

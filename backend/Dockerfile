@@ -7,5 +7,9 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 RUN python manage.py collectstatic --noinput || true
+RUN adduser --disabled-password --gecos "" appuser \
+    && mkdir -p /app/media /app/staticfiles \
+    && chown -R appuser:appuser /app
+USER appuser
 EXPOSE 8000
 CMD ["gunicorn", "dolphin.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3", "--access-logfile", "-"]

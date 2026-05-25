@@ -76,6 +76,9 @@ const DEFAULT_PAGES = {
   },
 };
 
+let siteCache = DEFAULT_SETTINGS;
+let sitePromise = null;
+
 function absolutize(src) {
   if (!src) return src;
   if (src.startsWith("http")) return src;
@@ -86,13 +89,32 @@ export function imageFrom(settings, key, fallback) {
   return absolutize(settings?.images?.[key]?.image_url || fallback);
 }
 
+function loadSite() {
+  if (!sitePromise) {
+    sitePromise = api.site()
+      .then((data) => {
+        siteCache = { ...DEFAULT_SETTINGS, ...data };
+        return siteCache;
+      })
+      .catch((error) => {
+        sitePromise = null;
+        throw error;
+      });
+  }
+  return sitePromise;
+}
+
+export function preloadSite() {
+  return loadSite().catch(() => DEFAULT_SETTINGS);
+}
+
 export function useSite(pageKey) {
-  const [site, setSite] = useState(DEFAULT_SETTINGS);
+  const [site, setSite] = useState(siteCache);
 
   useEffect(() => {
     let alive = true;
-    api.site().then((data) => {
-      if (alive) setSite({ ...DEFAULT_SETTINGS, ...data });
+    loadSite().then((data) => {
+      if (alive) setSite(data);
     }).catch(() => {});
     return () => { alive = false; };
   }, []);

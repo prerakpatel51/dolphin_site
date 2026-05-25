@@ -34,7 +34,7 @@
   <p>
     Selected source: <b>{{ source_label }}</b><br>
     Current selected/filter recipient count: <b>{{ recipient_count }}</b><br>
-    You can add extra email addresses below before sending.
+    You can add extra email addresses below before queueing delivery.
   </p>
   {% if select_across == "1" %}
     <p><b>Selection mode:</b> all matching rows in the current filtered admin list.</p>
@@ -54,13 +54,13 @@
   <table>{{ form.as_table }}</table>
 
   <div style="margin-top:16px">
-    <button type="submit" class="default">Send promotional email</button>
+    <button type="submit" class="default">Queue promotional email</button>
     <a href="javascript:history.back()" style="margin-left:12px">Back</a>
   </div>
 </form>
 
 <p class="promo-email-warning">
-  Use promotional email only for people the business is allowed to contact.
+  Delivery runs in the background through the email worker. Use promotional email only for people the business is allowed to contact.
   For production marketing, include the business identity and honor opt-out requests.
 </p>
 {% endblock %}

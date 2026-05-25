@@ -1,20 +1,42 @@
 import { Routes, Route, Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useAuth } from "./lib/auth.jsx";
 import { useSite } from "./lib/site.js";
 import { initMarketingTags, trackPageView } from "./lib/tracking.js";
-import Home from "./pages/Home.jsx";
-import Tours from "./pages/Tours.jsx";
-import TourDetail from "./pages/TourDetail.jsx";
-import Book from "./pages/Book.jsx";
-import Login from "./pages/Login.jsx";
-import Signup from "./pages/Signup.jsx";
-import Account from "./pages/Account.jsx";
-import MyBookings from "./pages/MyBookings.jsx";
-import About from "./pages/About.jsx";
-import Contact from "./pages/Contact.jsx";
-import ForgotPassword from "./pages/ForgotPassword.jsx";
-import ResetPassword from "./pages/ResetPassword.jsx";
+
+const routeLoaders = {
+  home: () => import("./pages/Home.jsx"),
+  tours: () => import("./pages/Tours.jsx"),
+  tourDetail: () => import("./pages/TourDetail.jsx"),
+  book: () => import("./pages/Book.jsx"),
+  login: () => import("./pages/Login.jsx"),
+  signup: () => import("./pages/Signup.jsx"),
+  account: () => import("./pages/Account.jsx"),
+  bookings: () => import("./pages/MyBookings.jsx"),
+  about: () => import("./pages/About.jsx"),
+  contact: () => import("./pages/Contact.jsx"),
+  forgotPassword: () => import("./pages/ForgotPassword.jsx"),
+  resetPassword: () => import("./pages/ResetPassword.jsx"),
+  notFound: () => import("./pages/NotFound.jsx"),
+};
+
+const Home = lazy(routeLoaders.home);
+const Tours = lazy(routeLoaders.tours);
+const TourDetail = lazy(routeLoaders.tourDetail);
+const Book = lazy(routeLoaders.book);
+const Login = lazy(routeLoaders.login);
+const Signup = lazy(routeLoaders.signup);
+const Account = lazy(routeLoaders.account);
+const MyBookings = lazy(routeLoaders.bookings);
+const About = lazy(routeLoaders.about);
+const Contact = lazy(routeLoaders.contact);
+const ForgotPassword = lazy(routeLoaders.forgotPassword);
+const ResetPassword = lazy(routeLoaders.resetPassword);
+const NotFound = lazy(routeLoaders.notFound);
+
+function preloadRoute(key) {
+  routeLoaders[key]?.();
+}
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -26,30 +48,31 @@ export default function App() {
   useEffect(() => {
     trackPageView(site, `${location.pathname}${location.search}`);
   }, [site, location.pathname, location.search]);
+  useEffect(() => { setOpen(false); }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-40 backdrop-blur bg-white/85 border-b border-ocean-100">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col bg-ocean-50 text-ocean-950">
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/90 border-b border-ocean-100/80 shadow-sm shadow-ocean-900/5">
+        <div className="max-w-6xl mx-auto px-4 h-16 sm:h-[72px] flex items-center justify-between">
           <Link to="/" onClick={() => setOpen(false)} className="flex items-center gap-2 sm:gap-3 min-w-0">
             <img src="/images/logo.png" alt="Dolphin Island Tours" className="h-9 sm:h-10 w-auto" />
             <span className="hidden sm:block font-display text-base sm:text-lg text-ocean-800 truncate">Dolphin Island Tours</span>
           </Link>
           {/* desktop nav */}
           <nav className="hidden md:flex items-center gap-1 lg:gap-3 text-sm">
-            <NavItem to="/tours">Tours</NavItem>
-            <NavItem to="/about">About</NavItem>
-            <NavItem to="/contact">Contact</NavItem>
+            <NavItem to="/tours" preloadKey="tours">Tours</NavItem>
+            <NavItem to="/about" preloadKey="about">About</NavItem>
+            <NavItem to="/contact" preloadKey="contact">Contact</NavItem>
             {user ? (
               <>
-                <NavItem to="/bookings">My Bookings</NavItem>
-                <NavItem to="/account">Account</NavItem>
+                <NavItem to="/bookings" preloadKey="bookings">My Bookings</NavItem>
+                <NavItem to="/account" preloadKey="account">Account</NavItem>
                 <button onClick={() => { logout(); nav("/"); }} className="text-ocean-700 hover:text-ocean-900 px-2">Logout</button>
               </>
             ) : (
               <>
-                <NavItem to="/login">Login</NavItem>
-                <Link to="/signup" className="btn-primary !py-2 !px-4 text-sm">Sign up</Link>
+                <NavItem to="/login" preloadKey="login">Login</NavItem>
+                <Link to="/signup" onMouseEnter={() => preloadRoute("signup")} onFocus={() => preloadRoute("signup")} className="btn-primary !py-2 !px-4 text-sm">Sign up</Link>
               </>
             )}
           </nav>
@@ -65,22 +88,22 @@ export default function App() {
         </div>
         {/* mobile drawer */}
         {open && (
-          <div className="md:hidden border-t border-ocean-100 bg-white">
+          <div className="md:hidden border-t border-ocean-100 bg-white shadow-2xl shadow-ocean-950/10">
             <nav className="px-4 py-4 flex flex-col gap-1 text-base">
-              <MItem to="/tours" onClick={() => setOpen(false)}>Tours</MItem>
-              <MItem to="/about" onClick={() => setOpen(false)}>About</MItem>
-              <MItem to="/contact" onClick={() => setOpen(false)}>Contact</MItem>
+              <MItem to="/tours" preloadKey="tours" onClick={() => setOpen(false)}>Tours</MItem>
+              <MItem to="/about" preloadKey="about" onClick={() => setOpen(false)}>About</MItem>
+              <MItem to="/contact" preloadKey="contact" onClick={() => setOpen(false)}>Contact</MItem>
               {user ? (
                 <>
-                  <MItem to="/bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
-                  <MItem to="/account" onClick={() => setOpen(false)}>Account</MItem>
+                  <MItem to="/bookings" preloadKey="bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
+                  <MItem to="/account" preloadKey="account" onClick={() => setOpen(false)}>Account</MItem>
                   <button onClick={() => { setOpen(false); logout(); nav("/"); }}
                     className="text-left px-4 py-3 rounded-xl text-ocean-700 hover:bg-ocean-50">Logout</button>
                 </>
               ) : (
                 <>
-                  <MItem to="/login" onClick={() => setOpen(false)}>Login</MItem>
-                  <Link to="/signup" onClick={() => setOpen(false)} className="btn-primary mt-2 text-base">Sign up</Link>
+                  <MItem to="/login" preloadKey="login" onClick={() => setOpen(false)}>Login</MItem>
+                  <Link to="/signup" onMouseEnter={() => preloadRoute("signup")} onFocus={() => preloadRoute("signup")} onClick={() => setOpen(false)} className="btn-primary mt-2 text-base">Sign up</Link>
                 </>
               )}
             </nav>
@@ -89,20 +112,23 @@ export default function App() {
       </header>
 
       <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/tours" element={<Tours />} />
-          <Route path="/tours/:slug" element={<TourDetail />} />
-          <Route path="/book/:slug" element={<Book />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/bookings" element={<MyBookings />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/tours" element={<Tours />} />
+            <Route path="/tours/:slug" element={<TourDetail />} />
+            <Route path="/book/:slug" element={<Book />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/bookings" element={<MyBookings />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <footer className="bg-ocean-950 text-ocean-100 mt-16 sm:mt-20">
@@ -133,17 +159,26 @@ export default function App() {
   );
 }
 
-function NavItem({ to, children }) {
+function RouteFallback() {
   return (
-    <NavLink to={to} className={({ isActive }) =>
+    <div className="max-w-6xl mx-auto px-4 py-16">
+      <div className="h-3 w-36 rounded-full bg-ocean-100 animate-pulse" />
+      <div className="mt-4 h-10 w-full max-w-md rounded-xl bg-white border border-ocean-100 animate-pulse" />
+    </div>
+  );
+}
+
+function NavItem({ to, children, preloadKey }) {
+  return (
+    <NavLink to={to} onMouseEnter={() => preloadRoute(preloadKey)} onFocus={() => preloadRoute(preloadKey)} className={({ isActive }) =>
       `px-3 py-2 rounded-full transition-colors ${isActive ? "bg-ocean-100 text-ocean-900" : "text-ocean-700 hover:text-ocean-900"}`
     }>{children}</NavLink>
   );
 }
 
-function MItem({ to, children, onClick }) {
+function MItem({ to, children, onClick, preloadKey }) {
   return (
-    <NavLink to={to} onClick={onClick} className={({ isActive }) =>
+    <NavLink to={to} onMouseEnter={() => preloadRoute(preloadKey)} onFocus={() => preloadRoute(preloadKey)} onClick={onClick} className={({ isActive }) =>
       `px-4 py-3 rounded-xl transition-colors ${isActive ? "bg-ocean-100 text-ocean-900 font-semibold" : "text-ocean-800 hover:bg-ocean-50"}`
     }>{children}</NavLink>
   );

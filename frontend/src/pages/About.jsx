@@ -22,7 +22,7 @@ export default function About() {
         ])}
       />
       <section className="relative h-[40vh] min-h-[260px] overflow-hidden">
-        <img src={heroImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={heroImage} alt="" fetchPriority="high" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-ocean-950/60" />
         <div className="relative max-w-4xl mx-auto px-4 h-full flex flex-col justify-end pb-8 sm:pb-12">
           <p className="uppercase tracking-[0.25em] sm:tracking-[0.3em] text-ocean-200 text-[10px] sm:text-xs mb-2 sm:mb-3">{page.hero_eyebrow}</p>
@@ -36,8 +36,8 @@ export default function About() {
         </p>
 
         <div className="grid sm:grid-cols-2 gap-4 my-12">
-          <img src={aboutSecondary} alt="" className="rounded-3xl w-full aspect-[4/3] object-cover border border-ocean-100" />
-          <img src={lagoon} alt="" className="rounded-3xl w-full aspect-[4/3] object-cover border border-ocean-100" />
+          <img src={aboutSecondary} alt="" loading="lazy" decoding="async" className="rounded-3xl w-full aspect-[4/3] object-cover border border-ocean-100" />
+          <img src={lagoon} alt="" loading="lazy" decoding="async" className="rounded-3xl w-full aspect-[4/3] object-cover border border-ocean-100" />
         </div>
 
         <h2 className="text-3xl mt-10 mb-4">{page.section_one_title}</h2>

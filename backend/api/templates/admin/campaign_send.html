@@ -23,7 +23,7 @@
 {% if campaign.status == "sent" %}
 <div class="di-card" style="background:#fff7ed;border-color:#fed7aa;color:#7c2d12">
   <p style="margin:0"><b>Already sent {{ campaign.sent_count }} times.</b>
-  Resending will deliver to every recipient again
+  Resending will queue delivery to every recipient again
   {% if campaign.attach_promo %}and generate NEW unique promo codes (old codes remain valid).{% endif %}</p>
 </div>
 {% endif %}
@@ -57,7 +57,7 @@
 </details>
 
 <form method="post" style="margin-top:24px">{% csrf_token %}
-  <button type="submit" class="di-btn">{% if campaign.status == "sent" %}Resend{% else %}Send{% endif %} {{ recipients|length }} emails now</button>
+  <button type="submit" class="di-btn">{% if campaign.status == "sent" %}Queue resend{% else %}Queue send{% endif %} for {{ recipients|length }} emails</button>
   <a href="../" style="margin-left:12px">Back</a>
 </form>
 {% endblock %}

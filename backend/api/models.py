@@ -55,6 +55,9 @@ class Tour(models.Model):
 
     class Meta:
         ordering = ["sort_order", "name"]
+        indexes = [
+            models.Index(fields=["is_active", "sort_order", "name"], name="tour_active_sort_idx"),
+        ]
 
     def __str__(self):
         return self.name
@@ -257,6 +260,95 @@ class ActivityLog(models.Model):
         return cls.objects.create(action=action, message=message, level=level, actor=actor, metadata=metadata)
 
 
+class EmailDeliveryJob(models.Model):
+    STATUS = [
+        ("queued", "Queued"),
+        ("sending", "Sending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+    name = models.CharField(max_length=200)
+    source = models.CharField(max_length=80, blank=True)
+    campaign = models.ForeignKey(
+        "EmailCampaign",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delivery_jobs",
+    )
+    status = models.CharField(max_length=10, choices=STATUS, default="queued")
+    total_count = models.PositiveIntegerField(default=0)
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    created_by = models.EmailField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="emailjob_status_created_idx"),
+            models.Index(fields=["campaign", "-created_at"], name="emailjob_campaign_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_status_display()})"
+
+    def refresh_stats(self, save=True):
+        from django.db.models import Count, Q
+        from django.utils import timezone as tz
+
+        stats = self.recipients.aggregate(
+            total=Count("id"),
+            sent=Count("id", filter=Q(status="sent")),
+            failed=Count("id", filter=Q(status="failed")),
+        )
+        self.total_count = stats["total"] or 0
+        self.sent_count = stats["sent"] or 0
+        self.failed_count = stats["failed"] or 0
+        done_count = self.sent_count + self.failed_count
+        if self.total_count and done_count >= self.total_count:
+            self.status = "failed" if self.sent_count == 0 else "sent"
+            if not self.finished_at:
+                self.finished_at = tz.now()
+        elif self.status != "sending":
+            self.status = "queued"
+        if save:
+            self.save(update_fields=["total_count", "sent_count", "failed_count", "status", "finished_at"])
+        return self
+
+
+class EmailDeliveryRecipient(models.Model):
+    STATUS = [
+        ("pending", "Pending"),
+        ("sending", "Sending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+    job = models.ForeignKey(EmailDeliveryJob, on_delete=models.CASCADE, related_name="recipients")
+    email = models.EmailField()
+    subject = models.CharField(max_length=200)
+    html = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS, default="pending")
+    promo_code = models.ForeignKey("PromoCode", on_delete=models.SET_NULL, null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="emailrecip_status_created_idx"),
+            models.Index(fields=["job", "status"], name="emailrecip_job_status_idx"),
+            models.Index(fields=["email"], name="emailrecip_email_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.email} ({self.get_status_display()})"
+
+
 class TourSlot(models.Model):
     """Available departure date/time. Admin manages these."""
     tour = models.ForeignKey(Tour, on_delete=models.CASCADE, related_name="slots")
@@ -269,12 +361,18 @@ class TourSlot(models.Model):
     class Meta:
         unique_together = ("tour", "date", "time")
         ordering = ["date", "time"]
+        indexes = [
+            models.Index(fields=["tour", "is_active", "date", "time"], name="slot_tour_act_date_idx"),
+            models.Index(fields=["is_active", "date", "time"], name="slot_act_date_idx"),
+        ]
 
     def __str__(self):
         return f"{self.tour.name} – {self.date} {self.time} (cap {self.capacity})"
 
     @property
     def seats_booked(self):
+        if hasattr(self, "booked_seats"):
+            return self.booked_seats or 0
         return sum(b.party_size for b in self.bookings.filter(status__in=["paid", "pending"]))
 
     @property
@@ -286,6 +384,8 @@ class Booking(models.Model):
     STATUS = [
         ("pending", "Pending Payment"),
         ("paid", "Paid"),
+        ("payment_failed", "Payment Failed"),
+        ("expired", "Expired Hold"),
         ("cancelled", "Cancelled"),
         ("refunded", "Refunded"),
     ]
@@ -311,6 +411,11 @@ class Booking(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["slot", "status"], name="booking_slot_status_idx"),
+            models.Index(fields=["user", "-created_at"], name="booking_user_created_idx"),
+            models.Index(fields=["customer_email", "-created_at"], name="booking_email_created_idx"),
+        ]
 
     def __str__(self):
         return f"{self.customer_name} – {self.slot} – {self.status}"
@@ -332,6 +437,11 @@ class Review(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tour", "is_approved", "is_featured", "-created_at"], name="review_tour_state_idx"),
+            models.Index(fields=["user", "tour"], name="review_user_tour_idx"),
+            models.Index(fields=["tour", "author_email"], name="review_tour_email_idx"),
+        ]
 
     def __str__(self):
         return f"{self.author_name} – {self.rating}★ – {self.tour or 'general'}"
@@ -347,6 +457,9 @@ class MailingListEntry(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["subscribed", "-created_at"], name="mailing_sub_created_idx"),
+        ]
         verbose_name_plural = "Mailing list entries"
 
     def __str__(self):
@@ -370,6 +483,10 @@ class PromoCode(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "expires_at"], name="promo_active_exp_idx"),
+            models.Index(fields=["locked_to_email"], name="promo_locked_email_idx"),
+        ]
 
     def __str__(self):
         return self.code

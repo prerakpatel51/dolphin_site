@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useLocation, useSearchParams, Link, Navigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
+import SEO from "../components/SEO.jsx";
 
 function money(cents = 0) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
@@ -25,13 +26,16 @@ function bookingDate(booking) {
   });
 }
 
-function downloadConfirmation(booking) {
+function confirmationFilename(booking) {
+  return `dolphin-island-confirmation-${booking.id}.html`;
+}
+
+function confirmationHtml(booking) {
   const tourName = booking.slot.tour?.name || "Dolphin Island Tours";
-  const filename = `dolphin-island-confirmation-${booking.id}.html`;
   const travelerRows = (booking.travelers || []).map((traveler, index) => (
     `<li>${escapeHtml(traveler.name || `Guest ${index + 1}`)}${traveler.age !== undefined && traveler.age !== "" ? `, age ${escapeHtml(traveler.age)}` : ""}</li>`
   )).join("");
-  const html = `<!doctype html>
+  return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -84,27 +88,52 @@ function downloadConfirmation(booking) {
   </main>
 </body>
 </html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+}
+
+function confirmationDataUrl(booking) {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(confirmationHtml(booking))}`;
+}
+
+function canDownloadConfirmation(booking) {
+  return booking.status === "paid";
+}
+
+function statusLabel(status) {
+  return {
+    paid: "paid",
+    pending: "pending payment",
+    payment_failed: "payment failed",
+    expired: "expired hold",
+    cancelled: "cancelled",
+    refunded: "refunded",
+  }[status] || status;
+}
+
+function statusClass(status) {
+  if (status === "paid") return "bg-emerald-100 text-emerald-800";
+  if (status === "payment_failed") return "bg-red-100 text-red-800";
+  if (status === "expired") return "bg-ocean-100 text-ocean-700";
+  if (status === "cancelled" || status === "refunded") return "bg-red-100 text-red-800";
+  return "bg-amber-100 text-amber-800";
 }
 
 export default function MyBookings() {
   const { user } = useAuth();
+  const location = useLocation();
   const [list, setList] = useState([]);
   const [params] = useSearchParams();
   const justId = params.get("just");
   useEffect(() => { if (user) api.myBookings().then(d => setList(d.results || d)); }, [user]);
 
-  if (!user) return <div className="p-10">Please <Link to="/login" className="underline">log in</Link>.</div>;
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`} replace />;
   return (
     <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="My Bookings | Dolphin Island Tours"
+        description="View your Dolphin Island Tours booking confirmations, receipts, traveler details, and trip status."
+        canonical="/bookings"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-6">My bookings</h1>
       {justId && (
         <div className="card p-6 mb-6 bg-emerald-50 border-emerald-200">
@@ -134,15 +163,32 @@ export default function MyBookings() {
             <div className="flex sm:flex-col items-stretch sm:items-end justify-between gap-3">
               <div className="flex items-center sm:flex-col sm:items-end justify-between gap-3">
                 <div className="text-2xl font-display">{money(b.total_cents)}</div>
-                <span className={`text-xs rounded-full px-2 py-1 ${b.status === "paid" ? "bg-emerald-100 text-emerald-800" : b.status === "cancelled" || b.status === "refunded" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{b.status}</span>
+                <span className={`text-xs rounded-full px-2 py-1 ${statusClass(b.status)}`}>{statusLabel(b.status)}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => downloadConfirmation(b)}
-                className="btn-ghost !py-2 !px-4 text-sm"
-              >
-                Download confirmation
-              </button>
+              {b.status === "payment_failed" && (
+                <p className="max-w-[16rem] text-right text-xs text-red-700">
+                  No charge was made and this booking was not confirmed.
+                </p>
+              )}
+              {b.status === "expired" && (
+                <p className="max-w-[16rem] text-right text-xs text-ocean-600">
+                  This unpaid hold expired and the seats were released.
+                </p>
+              )}
+              {canDownloadConfirmation(b) ? (
+                <a
+                  href={confirmationDataUrl(b)}
+                  download={confirmationFilename(b)}
+                  aria-label={`Download confirmation for ${b.slot.tour?.name || "booking"} on ${bookingDate(b)}`}
+                  className="btn-ghost !py-2 !px-4 text-sm"
+                >
+                  Download confirmation
+                </a>
+              ) : (
+                <span className="inline-flex items-center justify-center rounded-full border border-ocean-100 bg-ocean-50 px-4 py-2 text-sm font-semibold text-ocean-500">
+                  Confirmation unavailable
+                </span>
+              )}
             </div>
           </div>
         ))}

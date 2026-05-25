@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
+import SEO from "../components/SEO.jsx";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -18,6 +19,12 @@ export default function ForgotPassword() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="Reset Your Password | Dolphin Island Tours"
+        description="Request a secure password reset link for your Dolphin Island Tours account."
+        canonical="/forgot-password"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-2">Forgot your password?</h1>
       <p className="text-ocean-700 mb-6">Enter your email — we'll send a reset link.</p>
       <div className="card p-6 sm:p-8">
@@ -29,8 +36,8 @@ export default function ForgotPassword() {
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="label">Email</label>
-              <input className="input" type="email" required value={email}
+              <label className="label" htmlFor="forgot-email">Email</label>
+              <input id="forgot-email" className="input" type="email" required value={email}
                 onChange={e => setEmail(e.target.value)} />
             </div>
             {err && <p className="text-red-600 text-sm">{err}</p>}

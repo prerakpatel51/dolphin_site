@@ -73,7 +73,8 @@ For production: change `SQUARE_ENV=production` and swap the script tag in `front
 # On your VPS (Ubuntu 22.04+)
 sudo apt update && sudo apt install -y docker.io docker-compose-plugin git
 git clone <your-repo> dolphin && cd dolphin
-cp backend/.env.example backend/.env   # fill real values + DATABASE_URL=postgres://dolphin:dolphin@db:5432/dolphin
+cp backend/.env.example backend/.env   # fill app values; set DATABASE_URL to postgres://<user>:<password>@db:5432/<db>
+cp backend/db.env.example backend/db.env   # fill POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD
 docker compose up -d --build
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py seed

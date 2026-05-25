@@ -5,7 +5,7 @@
 @layer base {
   h1, h2, h3 { @apply font-display tracking-tight; }
   html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-  body { @apply text-base overflow-x-hidden; }
+  body { @apply text-base overflow-x-hidden bg-ocean-50 text-ocean-950 antialiased; }
   img { max-width: 100%; height: auto; }
   *, ::before, ::after { min-width: 0; }
   p, h1, h2, h3, h4, h5, h6, li, a, span, div { overflow-wrap: anywhere; }
@@ -14,10 +14,10 @@
 }
 
 @layer components {
-  .btn { @apply inline-flex items-center justify-center rounded-full px-4 sm:px-5 py-3 font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-ocean-400 focus:ring-offset-2 min-h-[44px] text-center leading-snug max-w-full whitespace-normal break-words; }
-  .btn-primary { @apply btn bg-ocean-600 text-white hover:bg-ocean-700 active:bg-ocean-800 shadow-lg shadow-ocean-600/20; }
-  .btn-ghost { @apply btn bg-white/70 text-ocean-900 hover:bg-white active:bg-ocean-50 backdrop-blur border border-ocean-100; }
-  .card { @apply bg-white rounded-lg shadow-xl shadow-ocean-900/5 border border-ocean-100/60 overflow-hidden min-w-0; }
+  .btn { @apply inline-flex items-center justify-center rounded-full px-4 sm:px-5 py-3 text-sm sm:text-base font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-ocean-400 focus:ring-offset-2 min-h-[44px] text-center leading-snug max-w-full whitespace-normal break-words; }
+  .btn-primary { @apply btn bg-ocean-600 text-white hover:bg-ocean-700 active:bg-ocean-800 shadow-lg shadow-ocean-600/20 hover:shadow-ocean-600/30; }
+  .btn-ghost { @apply btn bg-white/80 text-ocean-900 hover:bg-white active:bg-ocean-50 backdrop-blur border border-ocean-100; }
+  .card { @apply bg-white rounded-lg shadow-xl shadow-ocean-900/5 border border-ocean-100/70 overflow-hidden min-w-0; }
   .input { @apply w-full max-w-full rounded-lg border border-ocean-200 bg-white px-4 py-3 text-ocean-950 placeholder:text-ocean-400 focus:border-ocean-500 focus:outline-none focus:ring-2 focus:ring-ocean-200 text-base leading-relaxed; }
   .label { @apply block text-sm font-medium text-ocean-800 mb-1; }
   .square-card-host iframe { max-width: 100% !important; }

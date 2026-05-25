@@ -23,14 +23,23 @@ function setMeta(selector, attr, value) {
   el.setAttribute(attr, value);
 }
 
-export default function SEO({ title, description, keywords, image, type = "website", jsonLd, canonical }) {
+export default function SEO({
+  title,
+  description,
+  keywords,
+  image,
+  type = "website",
+  jsonLd,
+  canonical,
+  robots = "index, follow, max-image-preview:large",
+}) {
   useEffect(() => {
     const canonicalHref = canonicalUrl(canonical);
     const absoluteImage = absoluteUrl(image);
     if (title) document.title = title;
     setMeta('meta[name="description"]', "content", description);
     setMeta('meta[name="keywords"]', "content", keywords);
-    setMeta('meta[name="robots"]', "content", "index, follow, max-image-preview:large");
+    setMeta('meta[name="robots"]', "content", robots);
     setMeta('meta[property="og:title"]', "content", title);
     setMeta('meta[property="og:description"]', "content", description);
     setMeta('meta[property="og:type"]', "content", type);
@@ -56,6 +65,6 @@ export default function SEO({ title, description, keywords, image, type = "websi
       s.textContent = JSON.stringify(jsonLd);
       document.head.appendChild(s);
     }
-  }, [title, description, keywords, image, type, canonical, JSON.stringify(jsonLd)]);
+  }, [title, description, keywords, image, type, canonical, robots, JSON.stringify(jsonLd)]);
   return null;
 }

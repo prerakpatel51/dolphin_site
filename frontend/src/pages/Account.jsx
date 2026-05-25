@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth.jsx";
 import { api } from "../lib/api.js";
+import SEO from "../components/SEO.jsx";
 
 export default function Account() {
   const { user, loading, deleteAccount, refresh } = useAuth();
@@ -32,6 +33,12 @@ export default function Account() {
   if (loading) {
     return (
       <div className="max-w-xl mx-auto px-4 py-10 sm:py-16">
+        <SEO
+          title="Account | Dolphin Island Tours"
+          description="Manage your Dolphin Island Tours account details."
+          canonical="/account"
+          robots="noindex, follow"
+        />
         <h1 className="text-3xl sm:text-4xl mb-6">Account</h1>
         <div className="card p-6 sm:p-8 text-ocean-700">Loading account…</div>
       </div>
@@ -69,16 +76,23 @@ export default function Account() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10 sm:py-16">
+      <SEO
+        title="Account | Dolphin Island Tours"
+        description="Manage your Dolphin Island Tours account details and marketing email preferences."
+        canonical="/account"
+        robots="noindex, follow"
+      />
       <h1 className="text-3xl sm:text-4xl mb-6">Account</h1>
       <form onSubmit={save} className="card p-6 sm:p-8 space-y-4">
-        <div><label className="label">Email</label><input disabled className="input bg-ocean-50 break-all" value={user.email} /></div>
+        <div><label className="label" htmlFor="account-email">Email</label><input id="account-email" disabled className="input bg-ocean-50 break-all" value={user.email} /></div>
         <div className="grid sm:grid-cols-2 gap-3">
-          <div><label className="label">First name</label><input className="input" value={f.first_name} onChange={e=>setF({...f,first_name:e.target.value})} required /></div>
-          <div><label className="label">Last name</label><input className="input" value={f.last_name} onChange={e=>setF({...f,last_name:e.target.value})} required /></div>
+          <div><label className="label" htmlFor="account-first-name">First name</label><input id="account-first-name" className="input" value={f.first_name} onChange={e=>setF({...f,first_name:e.target.value})} required /></div>
+          <div><label className="label" htmlFor="account-last-name">Last name</label><input id="account-last-name" className="input" value={f.last_name} onChange={e=>setF({...f,last_name:e.target.value})} required /></div>
         </div>
         <div>
-          <label className="label">Phone</label>
+          <label className="label" htmlFor="account-phone">Phone</label>
           <input
+            id="account-phone"
             className="input"
             type="tel"
             inputMode="numeric"

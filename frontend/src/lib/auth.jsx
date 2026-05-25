@@ -22,7 +22,7 @@ export function AuthProvider({ children }) {
     await api.signup(data);
     await login(data.email, data.password);
   }
-  function logout() { clearTokens(); setUser(null); }
+  async function logout() { await clearTokens(); setUser(null); }
   async function deleteAccount() { await api.deleteMe(); logout(); }
 
   return (
