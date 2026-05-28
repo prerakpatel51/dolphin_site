@@ -204,8 +204,9 @@ class Command(BaseCommand):
 
         for page, defaults in PAGE_DEFAULTS.items():
             defaults = dict(defaults)
-            hero = image_objects.get(defaults.pop("hero"))
-            defaults["hero_image"] = hero
+            hero_key = defaults.pop("hero", None)
+            if hero_key:
+                defaults["hero_image"] = image_objects.get(hero_key)
             _, created = PageContent.objects.get_or_create(page=page, defaults=defaults)
             self.stdout.write(f"{'created' if created else 'exists'} page content: {page}")
 
