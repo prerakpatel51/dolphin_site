@@ -75,6 +75,7 @@ export function trackPageView(site, path, title = document.title) {
   if (window.fbq && site.meta_pixel_id) {
     window.fbq("track", "PageView");
   }
+
 }
 
 export function trackBookingConversion(site, booking) {
@@ -119,4 +120,5 @@ export function trackBookingConversion(site, booking) {
   if (window.fbq && site?.meta_pixel_id) {
     window.fbq("track", "Purchase", { value, currency: "USD" });
   }
+
 }

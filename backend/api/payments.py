@@ -1,6 +1,10 @@
 """Square payment helpers. Lazy import so missing creds don't crash app."""
 from django.conf import settings
+import logging
 import uuid
+
+
+logger = logging.getLogger(__name__)
 
 
 def charge(source_id: str, amount_cents: int, buyer_email: str, note: str = ""):
@@ -30,6 +34,7 @@ def charge(source_id: str, amount_cents: int, buyer_email: str, note: str = ""):
     if hasattr(client, "payments") and hasattr(client.payments, "create_payment"):
         result = client.payments.create_payment(body)
         if result.is_error():
+            logger.error("Square payment API returned errors: %s", result.errors)
             raise RuntimeError("Square error: " + "; ".join(e.get("detail", str(e)) for e in result.errors))
         return result.body["payment"]
 

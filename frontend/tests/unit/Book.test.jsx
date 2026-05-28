@@ -47,6 +47,7 @@ const testTour = {
   name: "Wildlife Tour",
   price_per_person: 60,
   min_party: 2,
+  tax_rate_percent: "0.00",
 };
 
 const testSlot = {
@@ -60,7 +61,6 @@ const testSlot = {
 const config = {
   price_per_person: 60,
   fake_payments: true,
-  tax_rate_percent: "0.00",
 };
 
 function renderBook(route = "/book/wildlife?slot=101") {

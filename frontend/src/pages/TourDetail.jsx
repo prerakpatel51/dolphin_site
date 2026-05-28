@@ -4,7 +4,6 @@ import { api } from "../lib/api.js";
 import { useSite } from "../lib/site.js";
 import { absoluteUrl, breadcrumbJsonLd, graphJsonLd, localBusinessJsonLd } from "../lib/seo.js";
 import Calendar from "../components/Calendar.jsx";
-import Reviews from "../components/Reviews.jsx";
 import SEO from "../components/SEO.jsx";
 
 export default function TourDetail() {
@@ -261,8 +260,6 @@ export default function TourDetail() {
             <li>Light layer (it's breezier on the water)</li>
           </ul>
         </section>
-
-        <Reviews tourSlug={slug} />
       </div>
     </div>
   );

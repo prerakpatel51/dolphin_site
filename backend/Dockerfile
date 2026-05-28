@@ -12,4 +12,5 @@ RUN adduser --disabled-password --gecos "" appuser \
     && chown -R appuser:appuser /app
 USER appuser
 EXPOSE 8000
-CMD ["gunicorn", "dolphin.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3", "--access-logfile", "-"]
+ENV GUNICORN_WORKERS=3
+CMD ["sh", "-c", "gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w ${GUNICORN_WORKERS} --access-logfile /dev/null --error-logfile -"]

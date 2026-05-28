@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -12,16 +13,26 @@ from django.utils.encoding import force_bytes
 from django.utils import timezone
 from django.utils.http import urlsafe_base64_encode
 
-from .admin import promotional_email_recipients
+from .admin import csv_safe_cell, promotional_email_recipients
+from .emails import (
+    add_unsubscribe_url,
+    prepare_user_email_html,
+    promotional_email_html,
+    send_email,
+    unsubscribe_token,
+)
 from .models import (
     ActivityLog,
     Booking,
     ContactMessage,
+    DeletedBookingReport,
     EmailDeliveryJob,
     EmailDeliveryRecipient,
     EmailCampaign,
     MailingListEntry,
     PageContent,
+    PageSection,
+    NavigationLink,
     PromoCode,
     Review,
     SiteImage,
@@ -148,6 +159,64 @@ class ApiTestCase(TestCase):
         return booking
 
 
+class CreateInitialSuperuserCommandTests(TestCase):
+    def test_create_initial_superuser_creates_account_from_env(self):
+        env = {
+            "DJANGO_SUPERUSER_EMAIL": "patel.prerak2798@gmail.com",
+            "DJANGO_SUPERUSER_USERNAME": "patel.prerak2798@gmail.com",
+            "DJANGO_SUPERUSER_PASSWORD": "StrongPass123!",
+            "DJANGO_SUPERUSER_FIRST_NAME": "Prerak",
+            "DJANGO_SUPERUSER_LAST_NAME": "Patel",
+            "DJANGO_SUPERUSER_PHONE": "3216100582",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            call_command("create_initial_superuser")
+
+        user = User.objects.get(email=env["DJANGO_SUPERUSER_EMAIL"])
+        self.assertEqual(user.username, env["DJANGO_SUPERUSER_USERNAME"])
+        self.assertEqual(user.first_name, env["DJANGO_SUPERUSER_FIRST_NAME"])
+        self.assertEqual(user.last_name, env["DJANGO_SUPERUSER_LAST_NAME"])
+        self.assertEqual(user.phone, env["DJANGO_SUPERUSER_PHONE"])
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password(env["DJANGO_SUPERUSER_PASSWORD"]))
+
+    def test_create_initial_superuser_updates_existing_account(self):
+        user = User.objects.create_user(
+            username="old-admin",
+            email="patel.prerak2798@gmail.com",
+            password="OldPass123!",
+            first_name="Old",
+            last_name="Name",
+            phone="3215550000",
+        )
+        user.is_staff = False
+        user.is_superuser = False
+        user.save(update_fields=["is_staff", "is_superuser"])
+
+        env = {
+            "DJANGO_SUPERUSER_EMAIL": "patel.prerak2798@gmail.com",
+            "DJANGO_SUPERUSER_PASSWORD": "StrongPass123!",
+            "DJANGO_SUPERUSER_FIRST_NAME": "Prerak",
+            "DJANGO_SUPERUSER_LAST_NAME": "Patel",
+            "DJANGO_SUPERUSER_PHONE": "3216100582",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            call_command("create_initial_superuser")
+
+        user.refresh_from_db()
+        self.assertEqual(user.username, env["DJANGO_SUPERUSER_EMAIL"])
+        self.assertEqual(user.first_name, env["DJANGO_SUPERUSER_FIRST_NAME"])
+        self.assertEqual(user.last_name, env["DJANGO_SUPERUSER_LAST_NAME"])
+        self.assertEqual(user.phone, env["DJANGO_SUPERUSER_PHONE"])
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password(env["DJANGO_SUPERUSER_PASSWORD"]))
+
+
 class PublicSiteAndSeoTests(ApiTestCase):
     def test_site_api_exposes_admin_seo_content_images_and_tracking_ids(self):
         settings = SiteSettings.get()
@@ -155,7 +224,6 @@ class PublicSiteAndSeoTests(ApiTestCase):
         settings.seo_title = "Admin SEO Title"
         settings.seo_description = "Admin SEO description"
         settings.seo_keywords = "boats,dolphins"
-        settings.tax_rate_percent = "7.50"
         settings.google_analytics_id = "G-TEST123"
         settings.google_tag_manager_id = "GTM-TEST123"
         settings.meta_pixel_id = "123456789"
@@ -164,7 +232,7 @@ class PublicSiteAndSeoTests(ApiTestCase):
             key="hero",
             defaults={"default_path": "/images/admin-hero.jpg", "alt_text": "Hero"},
         )
-        PageContent.objects.update_or_create(
+        page, _ = PageContent.objects.update_or_create(
             page="home",
             defaults={
                 "hero_image": hero,
@@ -174,19 +242,33 @@ class PublicSiteAndSeoTests(ApiTestCase):
                 "hero_title": "Admin managed hero",
             },
         )
+        PageSection.objects.create(
+            page_content=page,
+            eyebrow="Sale",
+            title="Summer offer",
+            body="Save on select departures this week.",
+            image=hero,
+            style="sunset",
+            cta_label="Book now",
+            cta_url="/tours",
+        )
+        NavigationLink.objects.create(area="header", label="Gift cards", url="/gift", sort_order=5)
 
         res = self.client.get("/api/site/")
 
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertEqual(body["seo_title"], "Admin SEO Title")
-        self.assertEqual(body["tax_rate_percent"], "7.50")
         self.assertEqual(body["google_analytics_id"], "G-TEST123")
         self.assertEqual(body["google_tag_manager_id"], "GTM-TEST123")
         self.assertEqual(body["meta_pixel_id"], "123456789")
         self.assertEqual(body["images"]["hero"]["image_url"], "/images/admin-hero.jpg")
         self.assertEqual(body["pages"]["home"]["seo_title"], "Home SEO Title")
         self.assertEqual(body["pages"]["home"]["hero_image_url"], "/images/admin-hero.jpg")
+        self.assertEqual(body["pages"]["home"]["sections"][0]["title"], "Summer offer")
+        self.assertEqual(body["pages"]["home"]["sections"][0]["image_url"], "/images/admin-hero.jpg")
+        self.assertEqual(body["pages"]["home"]["sections"][0]["style"], "sunset")
+        self.assertEqual(body["navigation"]["header"][0]["label"], "Gift cards")
 
     def test_tour_api_exposes_admin_seo_fields(self):
         res = self.client.get("/api/tours/")
@@ -292,8 +374,136 @@ class PublicSiteAndSeoTests(ApiTestCase):
         self.assertContains(res, "sq-payment-test")
         self.assertContains(res, "sq-order-test")
 
+    def test_admin_reports_and_downloads_render(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+            first_name="Admin",
+            last_name="User",
+            phone="5550000000",
+        )
+        self.create_paid_booking()
+        self.client.force_login(admin_user)
+
+        bookings_csv = self.client.get(reverse("admin:api_reports_bookings_csv"))
+        users_csv = self.client.get(reverse("admin:api_reports_users_csv"))
+        taxes_csv = self.client.get(reverse("admin:api_reports_taxes_csv"))
+        reports = self.client.get(reverse("admin:api_reports"))
+        payments_csv = self.client.get(reverse("admin:api_reports_payments_csv"))
+
+        self.assertEqual(reports.status_code, 200)
+        self.assertContains(reports, "Recent payment rows")
+        self.assertNotContains(reports, "Analytics")
+
+        self.assertNotContains(reports, "Deleted archived")
+        self.assertContains(bookings_csv, "transaction_id,transaction_date,transaction_time")
+        self.assertContains(payments_csv, "transaction_id,transaction_date,transaction_time,record_state,status")
+        self.assertContains(bookings_csv, TEST_USER_EMAIL)
+        self.assertContains(users_csv, "paid_bookings,income_usd")
+        self.assertNotContains(users_csv, "page_views")
+        self.assertContains(taxes_csv, "gross_sales_usd,discount_usd,taxable_sales_usd,tax_collected_usd")
+
+    def test_csv_exports_escape_formula_injection_cells(self):
+        self.create_paid_booking(email="=cmd@example.com")
+        Booking.objects.update(special_requests=" =HYPERLINK(\"https://evil.test\")")
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+            first_name="Admin",
+            last_name="User",
+            phone="5550000000",
+        )
+        self.client.force_login(admin_user)
+
+        res = self.client.get(reverse("admin:api_reports_bookings_csv"))
+
+        self.assertContains(res, "'=cmd@example.com")
+        self.assertContains(res, "' =HYPERLINK")
+        self.assertEqual(csv_safe_cell("@bad"), "'@bad")
+        self.assertEqual(csv_safe_cell("  +bad"), "'  +bad")
+
+    def test_admin_reports_include_cancelled_refunded_and_deleted_bookings(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="StrongPass123",
+            first_name="Admin",
+            last_name="User",
+            phone="5550000000",
+        )
+        cancelled = self.create_paid_booking(email="cancelled@example.com")
+        refunded = self.create_paid_booking(email="refunded@example.com")
+        cancelled.status = "cancelled"
+        cancelled.save(update_fields=["status"])
+        refunded.status = "refunded"
+        refunded.save(update_fields=["status"])
+        self.client.force_login(admin_user)
+
+        bookings_csv = self.client.get(reverse("admin:api_reports_bookings_csv"))
+        taxes_csv = self.client.get(reverse("admin:api_reports_taxes_csv"))
+        self.assertContains(bookings_csv, "cancelled@example.com")
+        self.assertContains(bookings_csv, "refunded@example.com")
+        self.assertContains(bookings_csv, "cancelled")
+        self.assertContains(bookings_csv, "refunded")
+        self.assertContains(taxes_csv, "cancelled@example.com")
+        self.assertContains(taxes_csv, "refunded@example.com")
+
+        delete_confirm = self.client.post(
+            reverse("admin:api_booking_delete", args=[cancelled.pk]),
+            {"post": "yes"},
+            follow=True,
+        )
+        self.assertEqual(delete_confirm.status_code, 200)
+        self.assertFalse(Booking.objects.filter(pk=cancelled.pk).exists())
+        archived = DeletedBookingReport.objects.get(booking_id=cancelled.pk)
+        self.assertEqual(archived.deleted_by, "admin@example.com")
+
+        bookings_after_delete = self.client.get(reverse("admin:api_reports_bookings_csv"))
+        taxes_after_delete = self.client.get(reverse("admin:api_reports_taxes_csv"))
+        reports_after_delete = self.client.get(reverse("admin:api_reports"))
+        payments_after_delete = self.client.get(reverse("admin:api_reports_payments_csv"))
+        admin_index = self.client.get(reverse("admin:index"))
+
+        self.assertContains(bookings_after_delete, "cancelled@example.com")
+        self.assertContains(bookings_after_delete, "deleted")
+        self.assertContains(taxes_after_delete, "cancelled@example.com")
+        self.assertContains(taxes_after_delete, "deleted")
+        self.assertContains(reports_after_delete, "cancelled@example.com")
+        self.assertContains(reports_after_delete, "deleted")
+        self.assertContains(payments_after_delete, "cancelled@example.com")
+        self.assertContains(payments_after_delete, "deleted")
+        self.assertContains(payments_after_delete, "admin@example.com")
+        self.assertNotContains(admin_index, "Deleted booking report")
+
 
 class AuthContactAndSlotSafetyTests(ApiTestCase):
+    def test_cookie_authenticated_writes_require_csrf_token(self):
+        client = Client(enforce_csrf_checks=True)
+        login = client.post(
+            "/api/auth/login/",
+            data=json.dumps({"email": TEST_USER_EMAIL, "password": "StrongPass123"}),
+            content_type="application/json",
+        )
+        self.assertEqual(login.status_code, 200, login.content)
+        self.assertIn("csrftoken", client.cookies)
+
+        blocked = client.patch(
+            "/api/auth/me/",
+            data=json.dumps({"phone": "5550001111"}),
+            content_type="application/json",
+        )
+        allowed = client.patch(
+            "/api/auth/me/",
+            data=json.dumps({"phone": "5550001111"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
+        )
+
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(allowed.status_code, 200, allowed.content)
+
     def test_signup_login_me_update_and_delete_account(self):
         signup = self.post_json("/api/auth/signup/", {
             "email": "new@example.com",
@@ -369,17 +579,14 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertIn("token=", html)
         self.assertIn("Reset password", html)
         self.assertIn("24 hours", html)
-        self.assertTrue(ActivityLog.objects.filter(action="auth.reset_requested", actor=TEST_USER_EMAIL).exists())
-        self.assertTrue(ActivityLog.objects.filter(action="auth.reset_no_user", actor="missing@example.com").exists())
 
     @override_settings(FRONTEND_URL="http://localhost")
-    def test_password_reset_email_failure_is_logged_but_response_stays_ok(self):
+    def test_password_reset_email_failure_response_stays_ok(self):
         with patch("api.emails.send_email", side_effect=RuntimeError("smtp down")):
             res = self.post_json("/api/auth/password-reset/", {"email": TEST_USER_EMAIL})
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json(), {"ok": True})
-        self.assertTrue(ActivityLog.objects.filter(action="auth.reset_email_failed", actor=TEST_USER_EMAIL).exists())
 
     def test_password_reset_rate_limit_blocks_repeated_requests(self):
         responses = [
@@ -422,7 +629,6 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(new_login.status_code, 200)
         self.assertNotIn("access", new_login.json())
         self.assertIn("access_token", new_login.cookies)
-        self.assertTrue(ActivityLog.objects.filter(action="auth.reset_completed", actor=TEST_USER_EMAIL).exists())
 
     def test_cookie_login_authenticates_me_without_exposing_tokens_to_javascript(self):
         login = self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "StrongPass123"})
@@ -461,7 +667,7 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(self.client.get("/api/bookings/").status_code, 401)
         self.assertEqual(self.post_json("/api/bookings/create-and-pay/", self.booking_payload()).status_code, 401)
 
-    def test_contact_form_creates_message_and_activity_log(self):
+    def test_contact_form_creates_message(self):
         res = self.post_json("/api/contact/", {
             "name": "Visitor",
             "email": "visitor@example.com",
@@ -472,7 +678,6 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
 
         self.assertEqual(res.status_code, 201)
         self.assertTrue(ContactMessage.objects.filter(email="visitor@example.com").exists())
-        self.assertTrue(ActivityLog.objects.filter(action="contact.received", actor="visitor@example.com").exists())
 
     def test_signup_and_contact_rate_limits_block_abuse(self):
         signup_responses = [
@@ -549,7 +754,6 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
 
         self.assertEqual(pending.status, "expired")
         self.assertEqual(slots[0]["seats_remaining"], 6)
-        self.assertTrue(ActivityLog.objects.filter(action="booking.pending_expired").exists())
 
     @override_settings(PENDING_BOOKING_EXPIRY_MINUTES=15)
     def test_expire_pending_bookings_management_command(self):
@@ -566,7 +770,7 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
 
 @override_settings(FAKE_PAYMENTS=True, RESEND_API_KEY="", SMTP_HOST="", ADMIN_EMAIL="admin@example.com")
 class BookingAndPromoTests(ApiTestCase):
-    def test_create_and_pay_fake_payment_creates_paid_booking_and_activity_logs(self):
+    def test_create_and_pay_fake_payment_creates_paid_booking(self):
         token = self.token_for()
 
         res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
@@ -579,7 +783,9 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(len(body["travelers"]), 3)
         self.assertEqual(body["travelers"][0]["name"], "Guest User")
         self.assertTrue(Booking.objects.filter(user=self.user, status="paid").exists())
-        self.assertTrue(ActivityLog.objects.filter(action="booking.paid", actor=self.user.email).exists())
+        audit = ActivityLog.objects.get(action="booking_payment_verified")
+        self.assertEqual(audit.actor, TEST_USER_EMAIL)
+        self.assertEqual(audit.metadata["total_cents"], 18000)
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_real_payment_mode_requires_source_id_before_creating_booking(self):
@@ -589,7 +795,6 @@ class BookingAndPromoTests(ApiTestCase):
 
         self.assertEqual(res.status_code, 400)
         self.assertEqual(Booking.objects.count(), 0)
-        self.assertTrue(ActivityLog.objects.filter(action="booking.missing_source").exists())
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_declined_payment_marks_attempt_failed_without_sending_receipt(self):
@@ -609,12 +814,8 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(booking.status, "payment_failed")
         self.assertFalse(booking.square_payment_id)
         send.assert_not_called()
-        self.assertTrue(
-            ActivityLog.objects.filter(
-                action="booking.payment_failed",
-                message__contains="CARD_DECLINED",
-            ).exists()
-        )
+        audit = ActivityLog.objects.get(action="booking_payment_failed")
+        self.assertEqual(audit.metadata["booking_id"], str(booking.id))
 
     def test_booking_validation_rejects_party_limits_capacity_and_past_slots(self):
         token = self.token_for()
@@ -765,11 +966,10 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(authorized_user_with_different_customer_email.json()["discount_cents"], 5000)
         self.assertEqual(attacker_spoofing_customer_email.status_code, 400)
 
-    def test_booking_total_includes_admin_tax_rate(self):
+    def test_booking_total_includes_tour_tax_rate(self):
         token = self.token_for()
-        settings = SiteSettings.get()
-        settings.tax_rate_percent = "7.50"
-        settings.save(update_fields=["tax_rate_percent"])
+        self.tour.tax_rate_percent = "7.50"
+        self.tour.save(update_fields=["tax_rate_percent"])
 
         res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
 
@@ -777,6 +977,18 @@ class BookingAndPromoTests(ApiTestCase):
         body = res.json()
         self.assertEqual(body["tax_cents"], 1350)
         self.assertEqual(body["total_cents"], 19350)
+
+    def test_tour_zero_tax_rate_is_honored(self):
+        token = self.token_for()
+        self.tour.tax_rate_percent = "0.00"
+        self.tour.save(update_fields=["tax_rate_percent"])
+
+        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
+
+        self.assertEqual(res.status_code, 201, res.content)
+        body = res.json()
+        self.assertEqual(body["tax_cents"], 0)
+        self.assertEqual(body["total_cents"], 18000)
 
 
 class ReviewTests(ApiTestCase):
@@ -798,14 +1010,18 @@ class ReviewTests(ApiTestCase):
         review.save(update_fields=["is_approved"])
         list_after = self.client.get("/api/reviews/?tour=wildlife")
         stats = self.client.get("/api/tours/wildlife/reviews/stats/")
+        all_stats = self.client.get("/api/reviews/stats/")
 
         self.assertEqual(created.status_code, 201)
         self.assertTrue(created.json()["pending_moderation"])
+        self.assertEqual(created.json()["review"]["reviewer_type"], "anonymous")
         self.assertEqual(duplicate.status_code, 400)
         self.assertEqual(list_before.json(), [])
         self.assertEqual(len(list_after.json()), 1)
         self.assertEqual(stats.json()["count"], 1)
         self.assertEqual(stats.json()["average"], 5.0)
+        self.assertEqual(all_stats.json()["count"], 1)
+        self.assertEqual(all_stats.json()["average"], 5.0)
 
     def test_review_title_and_body_have_length_limits(self):
         too_long_body = self.post_json("/api/reviews/", {
@@ -851,6 +1067,86 @@ class ReviewTests(ApiTestCase):
         review = Review.objects.get(user=self.user)
         self.assertTrue(review.is_approved)
         self.assertIsNotNone(review.booking)
+        self.assertTrue(created.json()["review"]["verified_guest"])
+        self.assertEqual(created.json()["review"]["reviewer_type"], "verified_guest")
+
+    def test_authenticated_unpaid_user_review_requires_admin_approval(self):
+        token = self.token_for()
+        payload = {
+            "tour_slug": "wildlife",
+            "author_name": "Guest User",
+            "author_email": TEST_USER_EMAIL,
+            "rating": 5,
+            "title": "Helpful team",
+            "body": "Looking forward to booking soon.",
+        }
+
+        created = self.post_json("/api/reviews/", payload, token=token)
+
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertTrue(created.json()["pending_moderation"])
+        review = Review.objects.get(user=self.user)
+        self.assertFalse(review.is_approved)
+        self.assertIsNone(review.booking)
+        self.assertEqual(created.json()["review"]["reviewer_type"], "registered_user")
+
+    def test_review_sort_filter_reply_and_helpful_vote_api(self):
+        low = Review.objects.create(
+            tour=self.tour,
+            author_name="Low",
+            author_email="low@example.com",
+            rating=2,
+            title="Low tide",
+            body="It was fine.",
+            is_approved=True,
+            reply_text="Thanks for joining us.",
+        )
+        high = Review.objects.create(
+            tour=self.tour,
+            booking=self.create_paid_booking(),
+            user=self.user,
+            author_name="High",
+            author_email=TEST_USER_EMAIL,
+            rating=5,
+            title="Best trip",
+            body="Loved it.",
+            is_approved=True,
+        )
+
+        highest = self.client.get("/api/reviews/?tour=wildlife&sort=highest")
+        filtered = self.client.get("/api/reviews/?tour=wildlife&rating=2")
+        helpful = self.client.post(f"/api/reviews/{high.id}/helpful/")
+        duplicate = self.client.post(f"/api/reviews/{high.id}/helpful/")
+
+        self.assertEqual(highest.status_code, 200)
+        self.assertEqual([row["id"] for row in highest.json()], [high.id, low.id])
+        self.assertTrue(highest.json()[0]["verified_guest"])
+        self.assertEqual(highest.json()[1]["reply_text"], "Thanks for joining us.")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual([row["id"] for row in filtered.json()], [low.id])
+        self.assertEqual(helpful.status_code, 200)
+        self.assertTrue(helpful.json()["created"])
+        self.assertEqual(helpful.json()["helpful_count"], 1)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertFalse(duplicate.json()["created"])
+        self.assertEqual(duplicate.json()["helpful_count"], 1)
+
+    @patch("api.views.send_email")
+    def test_review_submission_notifies_owner_for_moderation(self, mock_send_email):
+        payload = {
+            "tour_slug": "wildlife",
+            "author_name": "Visitor",
+            "author_email": "notify@example.com",
+            "rating": 3,
+            "title": "Okay",
+            "body": "Please review this.",
+        }
+
+        created = self.post_json("/api/reviews/", payload)
+
+        self.assertEqual(created.status_code, 201, created.content)
+        mock_send_email.assert_called_once()
+        self.assertIn("New review", mock_send_email.call_args.args[1])
 
 
 class AdminMarketingPromoTests(ApiTestCase):
@@ -906,6 +1202,7 @@ class AdminMarketingPromoTests(ApiTestCase):
         job = EmailDeliveryJob.objects.get(campaign=campaign)
         self.assertEqual(job.status, "queued")
         self.assertEqual(job.total_count, 2)
+        self.assertTrue(ActivityLog.objects.filter(action="campaign_email_queued", actor="admin@example.com").exists())
         self.assertEqual(job.recipients.count(), 2)
         codes = PromoCode.objects.filter(campaign=campaign)
         self.assertEqual(codes.count(), 2)
@@ -1019,7 +1316,76 @@ class AdminMarketingPromoTests(ApiTestCase):
         job = EmailDeliveryJob.objects.get(source="bulk:contact messages")
         self.assertEqual(job.status, "queued")
         self.assertEqual(job.total_count, 2)
+        self.assertTrue(
+            ActivityLog.objects.filter(
+                action="bulk_promotional_email_queued",
+                actor="admin@example.com",
+                metadata__recipient_count=2,
+            ).exists()
+        )
         self.assertEqual(
             set(job.recipients.values_list("email", flat=True)),
             {"visitor@example.com", "extra@example.com"},
         )
+
+    def test_marketing_emails_include_working_unsubscribe_link(self):
+        html = promotional_email_html("Hello")
+        rendered = add_unsubscribe_url(html, self.user.email)
+
+        self.assertNotIn("{{ unsubscribe_url }}", rendered)
+        self.assertIn("/api/unsubscribe/", rendered)
+
+        token = unsubscribe_token(self.user.email)
+        MailingListEntry.objects.create(email=self.user.email, name="Guest User", subscribed=True)
+        res = self.client.get(f"/api/unsubscribe/{token}/")
+
+        self.assertEqual(res.status_code, 200)
+        self.user.refresh_from_db()
+        entry = MailingListEntry.objects.get(email=self.user.email)
+        self.assertFalse(self.user.accepts_marketing)
+        self.assertFalse(entry.subscribed)
+
+    @override_settings(FRONTEND_URL="https://example.test")
+    def test_transactional_user_email_gets_unsubscribe_footer(self):
+        html = prepare_user_email_html("<div><p>Hello</p></div>", self.user.email)
+
+        self.assertIn("Unsubscribe from marketing emails", html)
+        self.assertIn("Booking receipts, password resets, and direct replies may still be sent", html)
+        self.assertIn("https://example.test/api/unsubscribe/", html)
+
+    @override_settings(
+        FRONTEND_URL="https://example.test",
+        RESEND_API_KEY="test-key",
+        SMTP_HOST="",
+        SMTP_USER="",
+    )
+    def test_send_email_adds_one_click_unsubscribe_headers_for_single_user_recipient(self):
+        with patch("api.emails.requests.post") as post:
+            post.return_value.raise_for_status.return_value = None
+            post.return_value.json.return_value = {"id": "email-id"}
+
+            send_email("guest@example.com", "Subject", "<div>Hello</div>")
+
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["to"], ["guest@example.com"])
+        self.assertIn("Unsubscribe from marketing emails", payload["html"])
+        self.assertIn("List-Unsubscribe", payload["headers"])
+        self.assertIn("https://example.test/api/unsubscribe/", payload["headers"]["List-Unsubscribe"])
+        self.assertEqual(payload["headers"]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
+
+    @override_settings(
+        FRONTEND_URL="https://example.test",
+        RESEND_API_KEY="test-key",
+        SMTP_HOST="",
+        SMTP_USER="",
+    )
+    def test_internal_email_can_skip_unsubscribe_headers(self):
+        with patch("api.emails.requests.post") as post:
+            post.return_value.raise_for_status.return_value = None
+            post.return_value.json.return_value = {"id": "email-id"}
+
+            send_email("admin@example.com", "Subject", "<div>Hello</div>", include_unsubscribe=False)
+
+        payload = post.call_args.kwargs["json"]
+        self.assertNotIn("headers", payload)
+        self.assertNotIn("Unsubscribe from marketing emails", payload["html"])

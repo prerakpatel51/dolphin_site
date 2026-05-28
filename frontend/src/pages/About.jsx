@@ -31,6 +31,8 @@ export default function About() {
       </section>
 
       <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
+        {page.intro_eyebrow && <p className="uppercase tracking-[0.24em] text-ocean-500 text-xs mb-3">{page.intro_eyebrow}</p>}
+        {page.intro_title && <h2 className="text-3xl sm:text-4xl mb-4">{page.intro_title}</h2>}
         <p className="text-lg sm:text-xl text-ocean-800 leading-relaxed">
           {page.intro_body}
         </p>
@@ -41,6 +43,7 @@ export default function About() {
         </div>
 
         <h2 className="text-3xl mt-10 mb-4">{page.section_one_title}</h2>
+        {page.section_one_body && <p className="text-ocean-700 mb-5">{page.section_one_body}</p>}
         <ul className="space-y-3">
           {[
             ["Wildlife first", "We keep a respectful distance and follow NOAA marine mammal guidelines on every trip."],
@@ -54,6 +57,12 @@ export default function About() {
             </li>
           ))}
         </ul>
+        {(page.section_two_title || page.section_two_body) && (
+          <div className="mt-12 border-t border-ocean-100 pt-8">
+            {page.section_two_title && <h2 className="text-3xl mb-4">{page.section_two_title}</h2>}
+            {page.section_two_body && <p className="text-lg text-ocean-800 leading-relaxed whitespace-pre-line">{page.section_two_body}</p>}
+          </div>
+        )}
       </div>
     </div>
   );

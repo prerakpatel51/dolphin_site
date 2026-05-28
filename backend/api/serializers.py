@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 import re
-from .models import Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage, PageContent
+from .models import Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage, PageContent, PageSection, NavigationLink
 
 REVIEW_TITLE_MAX_LENGTH = 80
 REVIEW_BODY_MAX_LENGTH = 1000
@@ -16,7 +16,8 @@ class TourSerializer(serializers.ModelSerializer):
         model = Tour
         fields = ("id", "slug", "name", "short_description", "long_description",
                   "duration_minutes", "price_per_person", "min_party", "max_party",
-                  "image_url", "seo_title", "seo_description", "seo_keywords", "og_image_url")
+                  "tax_rate_percent", "image_url", "seo_title", "seo_description",
+                  "seo_keywords", "og_image_url")
 
     def get_image_url(self, obj):
         if obj.image:
@@ -32,7 +33,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
         model = SiteSettings
         fields = ("site_name", "tagline", "seo_title", "seo_description", "seo_keywords",
                   "contact_email", "contact_phone", "address", "meeting_instructions",
-                  "hours", "maps_url", "map_embed_url", "price_blurb", "tax_rate_percent",
+                  "hours", "maps_url", "map_embed_url", "price_blurb",
                   "review_count", "average_rating", "google_analytics_id", "google_tag_manager_id",
                   "google_ads_id", "google_ads_booking_conversion_label", "meta_pixel_id",
                   "facebook_url", "instagram_url", "youtube_url", "tiktok_url",
@@ -50,8 +51,27 @@ class SiteImageSerializer(serializers.ModelSerializer):
         return obj.image_src
 
 
+class PageSectionSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    image_alt = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PageSection
+        fields = (
+            "id", "title", "eyebrow", "body", "image_url", "image_alt",
+            "background_color", "text_color", "style", "cta_label", "cta_url", "sort_order",
+        )
+
+    def get_image_url(self, obj):
+        return obj.image.image_src if obj.image else None
+
+    def get_image_alt(self, obj):
+        return obj.image.alt_text if obj.image else ""
+
+
 class PageContentSerializer(serializers.ModelSerializer):
     hero_image_url = serializers.SerializerMethodField()
+    sections = serializers.SerializerMethodField()
 
     class Meta:
         model = PageContent
@@ -62,10 +82,20 @@ class PageContentSerializer(serializers.ModelSerializer):
                   "intro_eyebrow", "intro_title", "intro_body",
                   "section_one_title", "section_one_body",
                   "section_two_title", "section_two_body",
-                  "cta_title", "cta_body", "extra_content", "updated_at")
+                  "cta_title", "cta_body", "extra_content", "sections", "updated_at")
 
     def get_hero_image_url(self, obj):
         return obj.hero_image.image_src if obj.hero_image else None
+
+    def get_sections(self, obj):
+        sections = obj.sections.filter(is_active=True).select_related("image")
+        return PageSectionSerializer(sections, many=True).data
+
+
+class NavigationLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NavigationLink
+        fields = ("id", "area", "label", "url", "visibility", "is_button", "opens_new_tab", "sort_order")
 
 
 class ContactMessageSerializer(serializers.ModelSerializer):
@@ -212,13 +242,20 @@ from .models import Review
 
 class ReviewSerializer(serializers.ModelSerializer):
     tour_slug = serializers.SlugRelatedField(slug_field="slug", source="tour", read_only=True)
+    tour_name = serializers.CharField(source="tour.name", read_only=True)
     mine = serializers.SerializerMethodField()
     pending = serializers.SerializerMethodField()
+    verified_guest = serializers.SerializerMethodField()
+    reviewer_type = serializers.SerializerMethodField()
+    helpful_by_me = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
+    photo_urls = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
-        fields = ("id", "tour_slug", "author_name", "rating", "title", "body",
-                  "is_featured", "created_at", "mine", "pending")
+        fields = ("id", "tour_slug", "tour_name", "author_name", "rating", "title", "body",
+                  "photo_url", "photo_urls", "reply_text", "helpful_count", "is_featured",
+                  "created_at", "mine", "pending", "verified_guest", "reviewer_type", "helpful_by_me")
 
     def get_mine(self, obj):
         req = self.context.get("request")
@@ -227,16 +264,52 @@ class ReviewSerializer(serializers.ModelSerializer):
     def get_pending(self, obj):
         return not obj.is_approved
 
+    def get_verified_guest(self, obj):
+        return bool(obj.booking_id)
+
+    def get_reviewer_type(self, obj):
+        if obj.booking_id:
+            return "verified_guest"
+        if obj.user_id:
+            return "registered_user"
+        return "anonymous"
+
+    def get_helpful_by_me(self, obj):
+        annotated = getattr(obj, "helpful_by_me_value", None)
+        if annotated is not None:
+            return bool(annotated)
+        req = self.context.get("request")
+        if not req:
+            return False
+        if req.user.is_authenticated:
+            return obj.helpful_votes.filter(user=req.user).exists()
+        session_key = req.session.session_key
+        return bool(session_key and obj.helpful_votes.filter(session_key=session_key).exists())
+
+    def get_photo_url(self, obj):
+        urls = self.get_photo_urls(obj)
+        return urls[0] if urls else ""
+
+    def get_photo_urls(self, obj):
+        urls = []
+        if obj.photo:
+            urls.append(obj.photo.url)
+        photos = getattr(obj, "photos", None)
+        if photos is not None:
+            urls.extend(photo.image.url for photo in photos.all() if photo.image)
+        return urls
+
 
 class ReviewCreateSerializer(serializers.ModelSerializer):
     tour_slug = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = Review
-        fields = ("tour_slug", "author_name", "author_email", "rating", "title", "body")
+        fields = ("tour_slug", "author_name", "author_email", "rating", "title", "body", "photo")
         extra_kwargs = {
             "title": {"max_length": REVIEW_TITLE_MAX_LENGTH},
             "body": {"max_length": REVIEW_BODY_MAX_LENGTH},
+            "photo": {"required": False},
         }
 
     def validate_rating(self, v):

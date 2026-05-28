@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { imageFrom, useSite } from "../lib/site.js";
 import { breadcrumbJsonLd, faqJsonLd, graphJsonLd, homeFaq, localBusinessJsonLd, websiteJsonLd } from "../lib/seo.js";
-import { useAuth } from "../lib/auth.jsx";
 import SEO from "../components/SEO.jsx";
 import { Stars } from "../components/Stars.jsx";
 
@@ -25,50 +24,52 @@ const FAQ = [
 export default function Home() {
   const [tours, setTours] = useState([]);
   const [homeReviews, setHomeReviews] = useState([]);
-  const [reviewableTours, setReviewableTours] = useState([]);
-  const { user } = useAuth();
+  const [reviewTourFilter, setReviewTourFilter] = useState("");
+  const [mobileReviewIndex, setMobileReviewIndex] = useState(0);
+  const [reviewStats, setReviewStats] = useState({ count: 0, average: 0 });
   const { site, page } = useSite("home");
   useEffect(() => {
     let alive = true;
     Promise.allSettled([
       api.tours(),
       api.reviews({ featured: 1 }),
-    ]).then(([tourResult, reviewResult]) => {
+      api.reviews({ sort: "highest" }),
+      api.allReviewStats(),
+    ]).then(([tourResult, reviewResult, backupReviewResult, statsResult]) => {
       if (!alive) return;
       if (tourResult.status === "fulfilled") setTours(tourResult.value.results || tourResult.value);
-      if (reviewResult.status === "fulfilled") {
-        const featured = reviewResult.value.results || reviewResult.value;
-        if (featured.length > 0) {
-          setHomeReviews(featured);
-        } else {
-          api.reviews().then(d => {
-            if (alive) setHomeReviews((d.results || d).slice(0, 3));
-          }).catch(() => {});
-        }
+      if (statsResult.status === "fulfilled") setReviewStats(statsResult.value);
+      const featured = reviewResult.status === "fulfilled" ? (reviewResult.value.results || reviewResult.value) : [];
+      const backup = backupReviewResult.status === "fulfilled" ? (backupReviewResult.value.results || backupReviewResult.value) : [];
+      const merged = prioritizeHomeReviews(featured, backup);
+      if (merged.length > 0) {
+        setHomeReviews(merged);
+      } else {
+        api.reviews().then(d => {
+          if (alive) setHomeReviews(prioritizeHomeReviews([], d.results || d));
+        }).catch(() => {});
       }
     });
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => {
-    let alive = true;
-    if (!user) {
-      setReviewableTours([]);
-      return () => { alive = false; };
-    }
-    api.myBookings().then(d => {
-      if (!alive) return;
-      const unique = new Map();
-      (d.results || d)
-        .filter(b => b.status === "paid" && b.slot?.tour?.slug)
-        .forEach(b => unique.set(b.slot.tour.slug, b.slot.tour));
-      setReviewableTours([...unique.values()]);
-    }).catch(() => {
-      if (alive) setReviewableTours([]);
-    });
-    return () => { alive = false; };
-  }, [user]);
   const heroImage = page.hero_image_url || imageFrom(site, "hero", "/images/hero-ocean.jpg");
+  const approvedReviewCount = Number(reviewStats.count || 0);
+  const averageRating = Number(reviewStats.average || 0);
+  const siteWithReviewStats = approvedReviewCount > 0
+    ? { ...site, review_count: approvedReviewCount, average_rating: averageRating.toFixed(1) }
+    : site;
+  const reviewTourOptions = tours.filter(t => homeReviews.some(r => r.tour_slug === t.slug));
+  const filteredHomeReviews = (reviewTourFilter
+    ? homeReviews.filter(r => r.tour_slug === reviewTourFilter)
+    : homeReviews
+  ).slice(0, 3);
+  useEffect(() => {
+    setMobileReviewIndex(0);
+  }, [reviewTourFilter, homeReviews.length]);
+  const reviewsHeading = approvedReviewCount > 0
+    ? `${averageRating.toFixed(1)} stars from ${approvedReviewCount} review${approvedReviewCount !== 1 ? "s" : ""}.`
+    : "Guest reviews.";
   const storyImage = imageFrom(site, "story", "/images/lagoon.jpg");
   const gallery = [
     imageFrom(site, "gallery_1", "/images/dolphin.jpg"),
@@ -90,8 +91,8 @@ export default function Home() {
         image={heroImage}
         canonical="/"
         jsonLd={graphJsonLd([
-          localBusinessJsonLd(site, heroImage),
-          websiteJsonLd(site),
+          localBusinessJsonLd(siteWithReviewStats, heroImage),
+          websiteJsonLd(siteWithReviewStats),
           breadcrumbJsonLd([{ name: "Home", path: "/" }]),
           faqJsonLd(FAQ),
           {
@@ -129,7 +130,14 @@ export default function Home() {
             <a href={page.secondary_button_url || "#highlights"} className="btn-ghost">{page.secondary_button_label || "What you'll see"}</a>
           </div>
           <div className="mt-10 sm:mt-12 grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:gap-x-8 text-sm text-ocean-100">
-            <Stat k={`${site.review_count}+`} v="five-star trips" />
+            {approvedReviewCount > 0 ? (
+              <>
+                <Stat k={averageRating.toFixed(1)} v="average rating" />
+                <Stat k={String(approvedReviewCount)} v={`review${approvedReviewCount !== 1 ? "s" : ""}`} />
+              </>
+            ) : (
+              <Stat k="New" v="guest reviews" />
+            )}
             <Stat k="2010" v="locally owned" />
             <Stat k="6" v="max guests" />
             <Stat k="$60" v="per person" />
@@ -207,41 +215,78 @@ export default function Home() {
 
       {/* TESTIMONIALS */}
       <section className="max-w-6xl mx-auto px-4 py-16 sm:py-24">
-        <div className="text-center mb-12">
-          <p className="uppercase tracking-[0.3em] text-ocean-500 text-xs mb-3">Guest stories</p>
-          <h2 className="text-3xl sm:text-5xl">{page.section_two_title}</h2>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-8">
+          <div>
+            <p className="uppercase tracking-[0.3em] text-ocean-500 text-xs mb-3">Guest stories</p>
+            <h2 className="text-3xl sm:text-5xl">{reviewsHeading}</h2>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/reviews" className="btn-ghost !py-2 !px-4 text-sm">Read all reviews</Link>
+            <Link to="/reviews#write-review" className="btn-primary !py-2 !px-4 text-sm">Write a review</Link>
+          </div>
         </div>
+        {approvedReviewCount > 0 && (
+          <ReviewSummary stats={reviewStats} />
+        )}
+        {reviewTourOptions.length > 1 && (
+          <div className="mt-6 mb-8 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setReviewTourFilter("")}
+              className={`rounded-full px-4 py-2 text-sm border transition-colors ${reviewTourFilter === "" ? "bg-ocean-900 text-white border-ocean-900" : "bg-white text-ocean-800 border-ocean-100 hover:border-ocean-300"}`}
+            >
+              All tours
+            </button>
+            {reviewTourOptions.map(tour => (
+              <button
+                key={tour.slug}
+                type="button"
+                onClick={() => setReviewTourFilter(tour.slug)}
+                className={`rounded-full px-4 py-2 text-sm border transition-colors ${reviewTourFilter === tour.slug ? "bg-ocean-900 text-white border-ocean-900" : "bg-white text-ocean-800 border-ocean-100 hover:border-ocean-300"}`}
+              >
+                {tour.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {filteredHomeReviews.length > 1 && (
+          <div className="mb-4 flex items-center justify-between md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileReviewIndex(i => (i - 1 + filteredHomeReviews.length) % filteredHomeReviews.length)}
+              className="w-10 h-10 rounded-full border border-ocean-100 bg-white text-ocean-800 shadow-sm"
+              aria-label="Previous review"
+            >
+              ←
+            </button>
+            <div className="text-sm text-ocean-600 tabular-nums">
+              {Math.min(mobileReviewIndex + 1, filteredHomeReviews.length)} / {filteredHomeReviews.length}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileReviewIndex(i => (i + 1) % filteredHomeReviews.length)}
+              className="w-10 h-10 rounded-full border border-ocean-100 bg-white text-ocean-800 shadow-sm"
+              aria-label="Next review"
+            >
+              →
+            </button>
+          </div>
+        )}
         <div className="grid md:grid-cols-3 gap-6">
-          {homeReviews.length === 0 && (
+          {filteredHomeReviews.length === 0 && (
             <div className="card p-7 md:col-span-3 text-center">
               <h3 className="text-xl">Real guest reviews will appear here soon.</h3>
               <p className="text-ocean-700 mt-2">After guests share approved tour reviews, the latest highlights show on the homepage.</p>
             </div>
           )}
-          {homeReviews.slice(0, 3).map(r => (
-            <div key={r.id} className="card p-7">
-              <Stars value={r.rating} size={20} />
-              {r.title && <h3 className="text-lg mt-2">{r.title}</h3>}
-              <p className="text-ocean-800 leading-relaxed mt-2">"{r.body}"</p>
-              <p className="mt-5 text-sm font-semibold text-ocean-900">— {r.author_name}</p>
-            </div>
+          {filteredHomeReviews.map((r, index) => (
+            <ReviewCard
+              key={r.id}
+              review={r}
+              className={index === mobileReviewIndex ? "block" : "hidden md:block"}
+            />
           ))}
         </div>
-        {user && reviewableTours.length > 0 && (
-          <div className="mt-8 card p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="text-2xl">Share your tour experience.</h3>
-              <p className="text-ocean-700 text-sm mt-1">Your paid booking lets you leave a verified review for future guests.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {reviewableTours.map(tour => (
-                <Link key={tour.slug} to={`/tours/${tour.slug}#reviews`} className="btn-ghost !py-2 !px-4 text-sm">
-                  Review {tour.name}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
       </section>
 
       {/* GALLERY */}
@@ -311,4 +356,91 @@ function Stat({ k, v }) {
       <span className="text-ocean-200 text-sm sm:text-base leading-tight min-w-0">{v}</span>
     </div>
   );
+}
+
+function ReviewSummary({ stats }) {
+  const breakdown = stats.breakdown || {};
+  return (
+    <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-4">
+      <div className="card p-5 sm:p-6">
+        <Stars value={stats.average} size={22} />
+        <div className="mt-2 text-3xl font-display text-ocean-950">{Number(stats.average || 0).toFixed(1)} / 5</div>
+        <div className="text-sm text-ocean-600">{stats.count} review{stats.count !== 1 ? "s" : ""}</div>
+      </div>
+      <div className="card p-5 sm:p-6">
+        <div className="space-y-2">
+          {[5, 4, 3, 2, 1].map(star => {
+            const count = Number(breakdown[String(star)] || 0);
+            const percent = stats.count ? Math.round((count / stats.count) * 100) : 0;
+            return (
+              <div key={star} className="grid grid-cols-[56px_minmax(0,1fr)_44px] items-center gap-3 text-sm text-ocean-700">
+                <span>{star} star</span>
+                <span className="h-3 rounded-full bg-ocean-100 overflow-hidden">
+                  <span className="block h-full rounded-full bg-amber-400" style={{ width: `${percent}%` }} />
+                </span>
+                <span className="text-right tabular-nums">{percent}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewCard({ review, className = "" }) {
+  const photoUrls = review.photo_urls?.length ? review.photo_urls : (review.photo_url ? [review.photo_url] : []);
+  return (
+    <article className={`card p-7 ${className}`}>
+      {photoUrls.length > 0 && (
+        <div className={`mb-4 grid gap-2 ${photoUrls.length === 1 ? "" : "grid-cols-2"}`}>
+          {photoUrls.slice(0, 3).map((url, index) => (
+            <img
+              key={url}
+              src={url}
+              alt=""
+              className={`w-full object-cover rounded-lg ${photoUrls.length === 1 || index === 0 ? "aspect-[4/3]" : "aspect-square"}`}
+              loading="lazy"
+              decoding="async"
+            />
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Stars value={review.rating} size={20} />
+        {review.tour_name && (
+          <span className="text-[10px] uppercase tracking-wider rounded-full bg-ocean-100 text-ocean-800 px-2 py-0.5 font-semibold">
+            {review.tour_name}
+          </span>
+        )}
+        {review.verified_guest && (
+          <span className="text-[10px] uppercase tracking-wider rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 font-semibold">
+            Verified
+          </span>
+        )}
+      </div>
+      {review.title && <h3 className="text-lg mt-3">{review.title}</h3>}
+      <p className="text-ocean-800 leading-relaxed mt-2">"{review.body}"</p>
+      <p className="mt-5 text-sm font-semibold text-ocean-900">— {review.author_name}</p>
+    </article>
+  );
+}
+
+function prioritizeHomeReviews(featured, backup) {
+  const byId = new Map();
+  featured.forEach((review, index) => byId.set(review.id, { ...review, _featuredRank: index }));
+  backup.forEach(review => {
+    if (!byId.has(review.id)) byId.set(review.id, review);
+  });
+  return [...byId.values()].sort((a, b) => reviewScore(b) - reviewScore(a));
+}
+
+function reviewScore(review) {
+  const featuredBoost = Number.isInteger(review._featuredRank) ? 100 - review._featuredRank : 0;
+  const verifiedBoost = review.verified_guest ? 20 : 0;
+  const photoBoost = review.photo_url ? 15 : 0;
+  const ratingBoost = Number(review.rating || 0) * 4;
+  const helpfulBoost = Math.min(Number(review.helpful_count || 0), 10);
+  const recencyBoost = review.created_at ? Math.max(0, 10 - ((Date.now() - new Date(review.created_at).getTime()) / 86400000 / 30)) : 0;
+  return featuredBoost + verifiedBoost + photoBoost + ratingBoost + helpfulBoost + recencyBoost;
 }

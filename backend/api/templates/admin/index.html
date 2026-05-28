@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<style>
+  .admin-sections { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; margin-bottom:24px; }
+  .admin-section { border:1px solid var(--hairline-color); border-radius:6px; background:var(--body-bg); padding:14px; }
+  .admin-section h2 { margin:0 0 10px; font-size:15px; }
+  .admin-section a { display:block; margin:7px 0; }
+  .admin-section .highlight { font-weight: bold; color: #0b6a8a; }
+</style>
+
+<div class="admin-sections">
+  <div class="admin-section">
+    <h2>Reports</h2>
+    <a href="{% url 'admin:api_reports' %}" class="highlight">Financial reports (Tax summary)</a>
+    <a href="{% url 'admin:api_reports_payments_csv' %}">Download payment report CSV</a>
+    <a href="{% url 'admin:api_reports_taxes_csv' %}">Download tax report CSV</a>
+  </div>
+  <div class="admin-section">
+    <h2>Bookings</h2>
+    <a href="{% url 'admin:api_booking_changelist' %}">View bookings</a>
+    <a href="{% url 'admin:api_tourslot_changelist' %}">Tour slots (calendar)</a>
+    <a href="{% url 'admin:api_reports_bookings_csv' %}">Download transactions CSV</a>
+  </div>
+  <div class="admin-section">
+    <h2>Website content</h2>
+    <a href="{% url 'admin:api_sitesettings_changelist' %}" class="highlight">Site settings (Tax rate & ads)</a>
+    <a href="{% url 'admin:api_tour_changelist' %}">Tours & pricing</a>
+    <a href="{% url 'admin:api_pagecontent_changelist' %}">Page copy (SEO)</a>
+    <a href="{% url 'admin:api_siteimage_changelist' %}">Site images</a>
+  </div>
+  <div class="admin-section">
+    <h2>Customers & marketing</h2>
+    <a href="{% url 'admin:api_user_changelist' %}">Users</a>
+    <a href="{% url 'admin:api_mailinglistentry_changelist' %}">Mailing list</a>
+    <a href="{% url 'admin:api_emailcampaign_changelist' %}">Email campaigns</a>
+    <a href="{% url 'admin:api_reports_users_csv' %}">Download users CSV</a>
+  </div>
+	  <div class="admin-section">
+	    <h2>Operations</h2>
+	    <a href="{% url 'admin:api_emaildeliveryjob_changelist' %}">Email delivery jobs</a>
+	  </div>
+</div>
+
+{% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+{% endblock %}

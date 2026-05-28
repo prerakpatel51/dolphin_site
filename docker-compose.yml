@@ -10,26 +10,30 @@ services:
     build: ./backend
     env_file: ./backend/.env
     depends_on: [db]
+    user: root
     volumes:
       - media:/app/media
       - static:/app/staticfiles
     restart: unless-stopped
     command: >
-      sh -c "python manage.py migrate &&
+      sh -c "chown -R appuser:appuser /app/media /app/staticfiles &&
+             su appuser -c 'python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w 3 --access-logfile -"
+             gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w 3 --access-logfile /dev/null --error-logfile -'"
 
   email_worker:
     build: ./backend
     env_file: ./backend/.env
     depends_on: [db, backend]
+    user: root
     volumes:
       - media:/app/media
       - static:/app/staticfiles
     restart: unless-stopped
     command: >
-      sh -c "python manage.py migrate &&
-             python manage.py process_email_queue --sleep 5 --batch-size 25"
+      sh -c "chown -R appuser:appuser /app/media /app/staticfiles &&
+             su appuser -c 'python manage.py migrate &&
+             python manage.py process_email_queue --sleep 5 --batch-size 100 --workers 5'"
 
   frontend:
     build: ./frontend

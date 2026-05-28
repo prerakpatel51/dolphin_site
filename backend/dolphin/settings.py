@@ -147,11 +147,66 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO")
+AUDIT_LOG_ASYNC = env_bool("AUDIT_LOG_ASYNC", default=not IS_TESTING)
+AUDIT_LOG_WORKERS = int(os.getenv("AUDIT_LOG_WORKERS", "2"))
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_DJANGO_LOG_LEVEL", LOG_LEVEL),
+            "propagate": False,
+        },
+        "api": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}
+
+redis_url = os.getenv("REDIS_URL", "")
+if redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": redis_url,
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-snowflake",
+        }
+    }
+
 # Business config
 PRICE_PER_PERSON = int(os.getenv("PRICE_PER_PERSON", "60"))
 MIN_PARTY = int(os.getenv("MIN_PARTY", "3"))
 MAX_PARTY = int(os.getenv("MAX_PARTY", "6"))
 PENDING_BOOKING_EXPIRY_MINUTES = int(os.getenv("PENDING_BOOKING_EXPIRY_MINUTES", "15"))
+PENDING_BOOKING_EXPIRY_CHECK_SECONDS = int(os.getenv("PENDING_BOOKING_EXPIRY_CHECK_SECONDS", "30"))
+SITE_CACHE_SECONDS = int(os.getenv("SITE_CACHE_SECONDS", "300"))
+REVIEW_STATS_CACHE_SECONDS = int(os.getenv("REVIEW_STATS_CACHE_SECONDS", "300"))
 
 SQUARE_ENV = os.getenv("SQUARE_ENV", "sandbox")
 SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")

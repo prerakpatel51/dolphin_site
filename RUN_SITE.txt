@@ -1,0 +1,309 @@
+Dolphin Island Tours - How To Run The Site
+==========================================
+
+Project folder:
+
+  /Users/prerak/Desktop/dolphin_site
+
+Run all commands from that folder.
+
+
+1. Required files
+-----------------
+
+Make sure these files exist before starting Docker:
+
+  backend/.env
+  backend/db.env
+
+The site uses Docker, so you do not need to install Python, Node, Postgres,
+or frontend packages locally.
+
+
+2. Start the site
+-----------------
+
+Start everything:
+
+  docker compose up -d
+
+Start everything and rebuild the images:
+
+  docker compose up -d --build
+
+Check that all containers are running:
+
+  docker compose ps
+
+Expected services:
+
+  db
+  backend
+  email_worker
+  frontend
+
+
+3. Open the site
+----------------
+
+Customer website:
+
+  http://localhost/
+
+Admin panel:
+
+  http://localhost/admin/
+
+Admin analytics page:
+
+  http://localhost/admin/analytics/
+
+Admin reports page:
+
+  http://localhost/admin/reports/
+
+
+
+
+4. Create an admin user
+-----------------------
+
+Run this if you do not already have an admin login:
+
+  docker compose exec backend python manage.py createsuperuser
+
+Follow the prompts for email, username, and password.
+
+
+5. Database migrations
+----------------------
+
+Apply migrations:
+
+  docker compose exec backend python manage.py migrate
+
+Check for missing migrations:
+
+  docker compose run --rm backend python manage.py makemigrations --check --dry-run
+
+
+6. Rebuild after code changes
+-----------------------------
+
+Rebuild backend:
+
+  docker compose build backend
+  docker compose up -d --force-recreate backend
+
+Rebuild frontend:
+
+  docker compose build frontend
+  docker compose up -d --force-recreate frontend
+
+Rebuild everything:
+
+  docker compose up -d --build
+
+
+7. Logs
+-------
+
+Show all logs:
+
+  docker compose logs -f
+
+Backend logs:
+
+  docker compose logs -f backend
+
+Frontend logs:
+
+  docker compose logs -f frontend
+
+Email worker logs:
+
+  docker compose logs -f email_worker
+
+Database logs:
+
+  docker compose logs -f db
+
+
+8. Admin logs and downloads
+---------------------------
+
+In the admin panel:
+
+  /admin/
+
+Use the "Logs & operations" section for:
+
+  Activity logs
+  Visitor events
+  Email delivery jobs
+
+Use the analytics page for reports:
+
+  /admin/analytics/
+
+Use the reports page for payment reports:
+
+  /admin/reports/
+
+Downloads available there:
+
+  Download payment report CSV
+  Download transactions CSV
+  Download tax report CSV
+  Download users CSV
+  Download visitor events CSV
+  Download logs CSV
+
+The transaction CSV includes:
+
+  transaction id
+  transaction date
+  transaction time
+  user email
+  customer name
+  customer email
+  customer phone
+  tour
+  tour date
+  tour time
+  party size
+  status
+  subtotal
+  discount
+  tax
+  total
+  Square payment id
+  Square order id
+  promo code
+  travelers
+  special requests
+
+The tax report CSV includes:
+
+  transaction id
+  transaction date
+  transaction time
+  booking status
+  customer name
+  customer email
+  customer phone
+  tour
+  tour date
+  tour time
+  party size
+  gross sales
+  discount
+  taxable sales
+  tax collected
+  total collected
+  promo code
+  Square payment id
+  Square order id
+
+Cancelled and refunded bookings remain in the transaction and tax reports.
+If an admin deletes a booking, the booking is archived into the report history
+first. Deleted booking rows still appear in the transaction and tax CSV files
+with record_state=deleted, deleted_at, and deleted_by columns.
+
+
+9. Analytics
+------------
+
+The site records first-party analytics events into the database.
+
+Tracked events:
+
+  page_view
+  booking_purchase
+
+The analytics page shows:
+
+  total users
+  marketing users
+  paid bookings
+  all-time income
+  30-day income
+  30-day visitors
+  repeat visitors
+  daily stats
+  top pages
+  top customers
+
+Privacy note:
+
+  Activity logs and visitor analytics can include customer names, emails, phone
+  numbers, and booking details for internal audit/reporting. The public privacy
+  policy should explain what is retained, why it is retained, and how customers
+  can request changes or deletion where required.
+
+
+10. Tests
+---------
+
+Backend tests:
+
+  docker compose run --rm backend python manage.py test
+
+Frontend unit tests:
+
+  docker compose --profile test run --rm e2e npm run test:unit
+
+Frontend end-to-end tests:
+
+  docker compose --profile test run --rm e2e
+
+
+11. Stop the site
+-----------------
+
+Stop containers but keep data:
+
+  docker compose stop
+
+Stop and remove containers but keep database/media/static volumes:
+
+  docker compose down
+
+
+12. Dangerous cleanup
+---------------------
+
+Delete containers and project volumes:
+
+  docker compose down -v
+
+WARNING: This deletes the Postgres database volume for this project.
+
+Remove unused Docker objects:
+
+  docker system prune
+
+WARNING: Only run this if you understand what Docker will delete.
+
+
+13. Useful troubleshooting
+--------------------------
+
+If the backend is restarting, check logs:
+
+  docker compose logs --tail=100 backend
+
+If static files have permission problems, fix the Docker volume ownership:
+
+  docker compose run --rm --user root backend chown -R appuser:appuser /app/staticfiles
+  docker compose up -d --force-recreate backend
+
+If frontend changes are not showing:
+
+  docker compose build frontend
+  docker compose up -d --force-recreate frontend
+
+If backend changes are not showing:
+
+  docker compose build backend
+  docker compose up -d --force-recreate backend

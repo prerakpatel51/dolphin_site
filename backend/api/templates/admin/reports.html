@@ -1,0 +1,105 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<style>
+  .report-actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
+  .report-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:0 0 24px; }
+  .report-card { border:1px solid var(--hairline-color); border-radius:6px; padding:14px; background:var(--body-bg); }
+  .report-card strong { display:block; font-size:22px; line-height:1.2; margin-top:4px; }
+  .report-table-wrap { overflow:auto; border:1px solid var(--hairline-color); border-radius:6px; margin-bottom: 24px; }
+  .report-table { width:100%; min-width:800px; }
+  .report-table td, .report-table th { white-space:nowrap; vertical-align:top; }
+  .report-section { margin-top: 24px; }
+</style>
+
+<div class="report-actions">
+  <a class="button" href="{{ download_url }}">Download payment report CSV</a>
+  <a class="button" href="{{ tax_url }}">Download tax report CSV</a>
+</div>
+
+<div class="report-grid">
+  <div class="report-card">Payment rows<strong>{{ summary.transactions }}</strong></div>
+  <div class="report-card">Total paid<strong>${{ summary.total_paid }}</strong></div>
+  <div class="report-card">Tax collected<strong>${{ summary.tax_collected }}</strong></div>
+</div>
+
+<div class="report-section module">
+  <h2>Tax summary by tour</h2>
+  <div class="report-table-wrap">
+    <table class="report-table" style="min-width: 600px;">
+      <thead>
+        <tr>
+          <th>Tour</th>
+          <th>Bookings</th>
+          <th>Gross sales</th>
+          <th>Tax collected</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in tour_rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>{{ row.count }}</td>
+          <td>${{ row.gross }}</td>
+          <td>${{ row.tax }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">No tour data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="report-section module">
+  <h2>Tax summary by month</h2>
+  <div class="report-table-wrap">
+    <table class="report-table" style="min-width: 600px;">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Gross sales</th>
+          <th>Tax collected</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in month_rows %}
+        <tr>
+          <td>{{ row.month }}</td>
+          <td>${{ row.gross }}</td>
+          <td>${{ row.tax }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3">No monthly data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="module">
+  <h2>Recent payment rows</h2>
+  <div class="report-table-wrap">
+    <table class="report-table" style="min-width:1200px;">
+      <thead>
+        <tr>
+          {% for header in headers %}
+          <th>{{ header }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for value in row %}
+          <td>{{ value }}</td>
+          {% endfor %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="{{ headers|length }}">No payment rows yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

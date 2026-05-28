@@ -3,15 +3,65 @@ import ssl
 from email.message import EmailMessage
 import requests
 from django.conf import settings
+from django.core import signing
 from django.utils.html import escape, linebreaks
 
 
-def _send_via_smtp(to, subject, html):
+UNSUBSCRIBE_PLACEHOLDER = "{{ unsubscribe_url }}"
+BUSINESS_ADDRESS = "Dolphin Island Tours, 2700 Harbortown Drive, Merritt Island, FL"
+
+
+def unsubscribe_token(email):
+    return signing.dumps({"email": email.lower()}, salt="marketing-unsubscribe")
+
+
+def unsubscribe_url_for_email(email):
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}/api/unsubscribe/{unsubscribe_token(email)}/"
+
+
+def add_unsubscribe_url(html, email):
+    return html.replace(UNSUBSCRIBE_PLACEHOLDER, escape(unsubscribe_url_for_email(email)))
+
+
+def user_email_footer(email):
+    unsubscribe_url = escape(unsubscribe_url_for_email(email))
+    return f"""
+    <hr style="border:none;border-top:1px solid #dbeafe;margin:24px 0">
+    <p style="color:#64748b;font-size:12px;line-height:1.45">
+      Sent by {BUSINESS_ADDRESS}.<br>
+      <a href="{unsubscribe_url}" style="color:#1389b1;text-decoration:none">Unsubscribe from marketing emails</a>.
+      Booking receipts, password resets, and direct replies may still be sent when needed.
+    </p>
+    """
+
+
+def prepare_user_email_html(html, email):
+    rendered = add_unsubscribe_url(html, email)
+    if UNSUBSCRIBE_PLACEHOLDER in html:
+        return rendered
+    closing_div = rendered.rfind("</div>")
+    if closing_div == -1:
+        return rendered + user_email_footer(email)
+    return rendered[:closing_div] + user_email_footer(email) + rendered[closing_div:]
+
+
+def unsubscribe_headers(email):
+    unsubscribe_url = unsubscribe_url_for_email(email)
+    return {
+        "List-Unsubscribe": f"<{unsubscribe_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _send_via_smtp(to, subject, html, headers=None):
     recipients = [to] if isinstance(to, str) else list(to)
     msg = EmailMessage()
     msg["From"] = settings.EMAIL_FROM
     msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
+    for name, value in (headers or {}).items():
+        msg[name] = value
     msg.set_content("This email requires an HTML-capable client.")
     msg.add_alternative(html, subtype="html")
     ctx = ssl.create_default_context()
@@ -23,18 +73,24 @@ def _send_via_smtp(to, subject, html):
     return {"id": "smtp-sent", "to": recipients}
 
 
-def send_email(to, subject, html):
+def send_email(to, subject, html, include_unsubscribe=True):
     """Send via Gmail SMTP if configured, else Resend, else noop."""
+    recipients = [to] if isinstance(to, str) else list(to)
+    headers = {}
+    if include_unsubscribe and len(recipients) == 1:
+        html = prepare_user_email_html(html, recipients[0])
+        headers = unsubscribe_headers(recipients[0])
     if getattr(settings, "SMTP_HOST", "") and getattr(settings, "SMTP_USER", ""):
-        return _send_via_smtp(to, subject, html)
+        return _send_via_smtp(to, subject, html, headers=headers)
     if not settings.RESEND_API_KEY:
-        print(f"[email:noop] to={to} subject={subject}")
         return None
+    payload = {"from": settings.EMAIL_FROM, "to": recipients, "subject": subject, "html": html}
+    if headers:
+        payload["headers"] = headers
     r = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}", "Content-Type": "application/json"},
-        json={"from": settings.EMAIL_FROM, "to": [to] if isinstance(to, str) else to,
-              "subject": subject, "html": html},
+        json=payload,
         timeout=15,
     )
     r.raise_for_status()
@@ -85,6 +141,20 @@ def contact_admin_html(msg):
     """
 
 
+def review_moderation_admin_html(review):
+    tour_name = escape(str(review.tour or "General review"))
+    title = escape(review.title or "(no title)")
+    body = linebreaks(escape(review.body))
+    status = "approved automatically" if review.is_approved else "awaiting moderation"
+    return f"""
+    <h3>New tour review</h3>
+    <p><b>{escape(review.author_name)}</b> left a {review.rating}-star review for <b>{tour_name}</b>.</p>
+    <p><b>Status:</b> {escape(status)}</p>
+    <p><b>Title:</b> {title}</p>
+    <blockquote style="border-left:3px solid #1389b1;padding-left:12px;color:#0b3a52">{body}</blockquote>
+    """
+
+
 def contact_ack_html(msg):
     message = linebreaks(escape(msg.message))
     return f"""
@@ -131,7 +201,8 @@ def promotional_email_html(body, cta_label="", cta_url=""):
       {button}
       <hr style="border:none;border-top:1px solid #dbeafe;margin:24px 0">
       <p style="color:#64748b;font-size:12px">
-        You are receiving this because you contacted or booked with Dolphin Island Tours.
+        You are receiving this because you contacted or booked with Dolphin Island Tours.<br>
+        <a href="{{{{ unsubscribe_url }}}}" style="color:#1389b1;text-decoration:none">Unsubscribe from these emails</a>
       </p>
     </div>
     """
@@ -173,7 +244,8 @@ def campaign_email_html(body, name="", promo_code="", cta_label="", cta_url="", 
       <hr style="border:none;border-top:1px solid #dbeafe;margin:24px 0">
       <p style="color:#64748b;font-size:12px">
         Sent by Dolphin Island Tours · 2700 Harbortown Drive, Merritt Island, FL.
-        You're receiving this because you booked, signed up, or subscribed.
+        You're receiving this because you booked, signed up, or subscribed.<br>
+        <a href="{{{{ unsubscribe_url }}}}" style="color:#1389b1;text-decoration:none">Unsubscribe from these emails</a>
       </p>
     </div>
     """

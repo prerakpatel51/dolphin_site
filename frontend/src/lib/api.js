@@ -19,15 +19,32 @@ function errorMessage(err) {
 }
 
 async function refreshAuth() {
-  const r = await fetch(`${BASE}/auth/refresh/`, { method: "POST", credentials: "include" });
+  const headers = csrfHeaders();
+  const r = await fetch(`${BASE}/auth/refresh/`, { method: "POST", credentials: "include", headers });
   return r.ok;
 }
 
+function cookieValue(name) {
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")
+    .slice(1)
+    .join("=") || "";
+}
+
+function csrfHeaders(method = "POST") {
+  if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(method.toUpperCase())) return {};
+  const token = decodeURIComponent(cookieValue("csrftoken"));
+  return token ? { "X-CSRFToken": token } : {};
+}
+
 async function request(path, { method = "GET", body, auth = true, optionalAuth = false, retry = true } = {}) {
-  const headers = { "Content-Type": "application/json" };
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const headers = { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...csrfHeaders(method) };
   const r = await fetch(`${BASE}${path}`, {
     method, headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
     credentials: "include",
   });
   if (r.status === 401 && auth && retry && await refreshAuth()) {
@@ -69,6 +86,8 @@ export const api = {
     return request(`/reviews/${q ? `?${q}` : ""}`, { optionalAuth: true });
   },
   submitReview: (d) => request("/reviews/", { method: "POST", body: d }),
+  markReviewHelpful: (id) => request(`/reviews/${id}/helpful/`, { method: "POST", auth: false }),
+  allReviewStats: () => request("/reviews/stats/", { auth: false }),
   reviewStats: (slug) => request(`/tours/${slug}/reviews/stats/`, { auth: false }),
   myBookings: () => request("/bookings/"),
   createAndPay: (d) => request("/bookings/create-and-pay/", { method: "POST", body: d }),

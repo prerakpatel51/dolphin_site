@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core import signing
 from django.db import transaction
-from django.db.models import Avg, Count, F, IntegerField, Q, Sum, Value
+from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
@@ -15,18 +16,24 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.http import HttpResponse
+from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.utils.html import escape
 from .models import (Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage,
-                     ActivityLog, PageContent, PromoCode, Review)
+                     PageContent, NavigationLink, PromoCode, Review, ReviewPhoto, MailingListEntry,
+                     ActivityLog, ReviewHelpfulVote, ALL_REVIEW_STATS_CACHE_KEY,
+                     REVIEW_STATS_CACHE_PREFIX, SITE_PAYLOAD_CACHE_KEY)
 from .serializers import (UserSerializer, TourSerializer, TourSlotSerializer, BookingSerializer,
                           BookingCreateSerializer, SiteSettingsSerializer, SiteImageSerializer,
-                          ContactMessageSerializer, PageContentSerializer, PromoValidateSerializer,
+                          ContactMessageSerializer, PageContentSerializer, NavigationLinkSerializer, PromoValidateSerializer,
                           ReviewSerializer, ReviewCreateSerializer)
-from .emails import send_email, booking_receipt_html, admin_notify_html, contact_admin_html, contact_ack_html
+from .emails import (send_email, booking_receipt_html, admin_notify_html, contact_admin_html,
+                     contact_ack_html, review_moderation_admin_html)
 from .payments import charge
+import logging
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 BOOKED_STATUSES = ["paid", "pending"]
 PAYMENT_FAILED_MESSAGE = (
     "Your card was declined or could not be charged. No charge was made and your booking "
@@ -34,7 +41,9 @@ PAYMENT_FAILED_MESSAGE = (
 )
 
 
-def set_auth_cookies(response, refresh):
+def set_auth_cookies(response, refresh, request=None):
+    if request is not None:
+        get_token(request)
     access = refresh.access_token
     cookie_kwargs = {
         "httponly": True,
@@ -79,18 +88,12 @@ def with_booked_seats(qs):
 
 
 def expire_stale_pending_bookings():
+    interval = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_CHECK_SECONDS", 30)))
+    if not cache.add("pending-booking-expiry-lock", "1", timeout=interval):
+        return 0
     minutes = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_MINUTES", 15)))
     cutoff = timezone.now() - timedelta(minutes=minutes)
-    expired = Booking.objects.filter(status="pending", updated_at__lt=cutoff).update(status="expired")
-    if expired:
-        ActivityLog.log(
-            "booking.pending_expired",
-            f"Expired {expired} pending booking hold{'s' if expired != 1 else ''}.",
-            level="info",
-            actor="system",
-            count=expired,
-        )
-    return expired
+    return Booking.objects.filter(status="pending", updated_at__lt=cutoff).update(status="expired")
 
 
 def client_ip(request):
@@ -98,6 +101,13 @@ def client_ip(request):
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR", "unknown")
+
+
+def normalized_client_ip(request):
+    ip = client_ip(request)
+    if ip == "unknown":
+        return None
+    return ip
 
 
 def rate_limited(request, scope, identifier="", limit=10, window=300):
@@ -137,7 +147,7 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         refresh = RefreshToken(serializer.validated_data["refresh"])
         response = Response({"ok": True})
-        return set_auth_cookies(response, refresh)
+        return set_auth_cookies(response, refresh, request)
 
 
 class RefreshView(APIView):
@@ -153,7 +163,7 @@ class RefreshView(APIView):
             response = Response({"detail": "Refresh token is invalid or expired."}, status=401)
             return clear_auth_cookies(response)
         response = Response({"ok": True})
-        return set_auth_cookies(response, refresh)
+        return set_auth_cookies(response, refresh, request)
 
 
 class LogoutView(APIView):
@@ -195,11 +205,9 @@ def tour_dates(request, slug):
                                 date__gte=timezone.now().date())
         .select_related("tour")
         .order_by("date", "time")
-    )
+    ).filter(booked_seats__lt=F("capacity"))
     by_date = {}
     for s in qs:
-        if s.seats_remaining <= 0:
-            continue
         by_date.setdefault(s.date.isoformat(), []).append({
             "id": s.id, "time": s.time.strftime("%H:%M"),
             "seats_remaining": s.seats_remaining,
@@ -229,7 +237,10 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
     def get_queryset(self):
         expire_stale_pending_bookings()
-        return Booking.objects.filter(user=self.request.user)
+        return (
+            Booking.objects.filter(user=self.request.user)
+            .select_related("slot__tour", "promo_code")
+        )
 
     @action(detail=False, methods=["post"], url_path="create-and-pay")
     @transaction.atomic
@@ -255,8 +266,6 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
         source_id = request.data.get("source_id")
         if not source_id and not settings.FAKE_PAYMENTS:
-            ActivityLog.log("booking.missing_source", "No payment source", level="warn",
-                             actor=request.user.email)
             return Response({"detail": "Missing payment source_id."}, status=400)
 
         price = data["slot"].tour.price_per_person * 100
@@ -277,8 +286,8 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
             except PromoCode.DoesNotExist:
                 return Response({"promo_code": "Invalid promo code."}, status=400)
         taxable_total = max(0, subtotal - discount)
-        site_settings = SiteSettings.get()
-        tax = tax_cents_for(taxable_total, site_settings.tax_rate_percent)
+        tax_rate_percent = data["slot"].tour.tax_rate_percent
+        tax = tax_cents_for(taxable_total, tax_rate_percent)
         total = taxable_total + tax
 
         booking = Booking.objects.create(
@@ -300,42 +309,58 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
         if settings.FAKE_PAYMENTS:
             payment = {"id": f"FAKE-{booking.id}", "order_id": "FAKE-ORDER"}
-            ActivityLog.log("booking.fake_paid", "FAKE_PAYMENTS bypass active",
-                             level="warn", actor=request.user.email, booking_id=str(booking.id))
         else:
             try:
                 payment = charge(source_id, total, data["customer_email"],
                                  note=f"Dolphin tour {data['slot'].date} {data['slot'].time}")
             except Exception as e:
+                logger.exception("Payment failed for booking %s.", booking.id)
                 booking.status = "payment_failed"
                 booking.save(update_fields=["status", "updated_at"])
-                ActivityLog.log("booking.payment_failed", str(e), level="error",
-                                 actor=request.user.email, booking_id=str(booking.id))
+                ActivityLog.log(
+                    "booking_payment_failed",
+                    actor=request.user.email,
+                    message=f"Payment failed for booking {booking.id}.",
+                    metadata={
+                        "booking_id": str(booking.id),
+                        "customer_email": data["customer_email"],
+                        "total_cents": total,
+                        "error": str(e),
+                    },
+                )
                 return Response({"detail": PAYMENT_FAILED_MESSAGE}, status=402)
 
         booking.square_payment_id = payment.get("id", "")
         booking.square_order_id = payment.get("order_id", "")
         booking.status = "paid"
         booking.save()
+        logger.info("Payment verified for booking %s.", booking.id)
+        ActivityLog.log(
+            "booking_payment_verified",
+            actor=request.user.email,
+            message=f"Booking {booking.id} payment was verified.",
+            metadata={
+                "booking_id": str(booking.id),
+                "customer_email": booking.customer_email,
+                "total_cents": booking.total_cents,
+                "slot_id": booking.slot_id,
+                "square_payment_id": booking.square_payment_id,
+                "square_order_id": booking.square_order_id,
+                "promo_code": promo_obj.code if promo_obj else "",
+            },
+        )
 
         try:
             send_email(booking.customer_email, "Your Dolphin Island Tours booking", booking_receipt_html(booking))
-            send_email(settings.ADMIN_EMAIL, f"New booking: {booking.customer_name}", admin_notify_html(booking))
-            ActivityLog.log("booking.email_sent", f"Receipts sent for {booking.id}",
-                             level="success", actor=request.user.email)
-        except Exception as e:
-            ActivityLog.log("booking.email_failed", str(e), level="warn",
-                             actor=request.user.email, booking_id=str(booking.id))
+            send_email(settings.ADMIN_EMAIL, f"New booking: {booking.customer_name}", admin_notify_html(booking), include_unsubscribe=False)
+            logger.info("Booking confirmation emails sent for booking %s.", booking.id)
+        except Exception:
+            logger.exception("Booking confirmation email failed for booking %s.", booking.id)
 
         if promo_obj:
             promo_obj.used_count = F("used_count") + 1
             promo_obj.save(update_fields=["used_count"])
-            ActivityLog.log("promo.redeemed", f"{promo_obj.code} – ${discount/100:.2f} off",
-                             level="info", actor=request.user.email, code=promo_obj.code)
 
-        ActivityLog.log("booking.paid", f"{booking.customer_name} · ${booking.total_cents/100:.2f}",
-                         level="success", actor=request.user.email,
-                         booking_id=str(booking.id), party=booking.party_size)
         return Response(BookingSerializer(booking).data, status=201)
 
 
@@ -346,21 +371,47 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gen
         from django.db.models import Q
         slug = self.request.query_params.get("tour")
         featured = self.request.query_params.get("featured")
+        rating = self.request.query_params.get("rating")
+        sort = self.request.query_params.get("sort", "newest")
         filt = Q(is_approved=True)
         # Authenticated users also see their own pending review.
         if self.request.user.is_authenticated:
             filt |= Q(user=self.request.user)
-        qs = Review.objects.filter(filt).select_related("tour", "user").distinct()
+        qs = Review.objects.filter(filt).select_related("tour", "user", "booking").prefetch_related("photos").distinct()
+        if self.request.user.is_authenticated:
+            helpful_vote = ReviewHelpfulVote.objects.filter(review_id=OuterRef("pk"), user=self.request.user)
+            qs = qs.annotate(helpful_by_me_value=Exists(helpful_vote))
+        elif self.request.session.session_key:
+            helpful_vote = ReviewHelpfulVote.objects.filter(
+                review_id=OuterRef("pk"),
+                user__isnull=True,
+                session_key=self.request.session.session_key,
+            )
+            qs = qs.annotate(helpful_by_me_value=Exists(helpful_vote))
         if slug:
             qs = qs.filter(tour__slug=slug)
         if featured == "1":
             qs = qs.filter(is_featured=True, is_approved=True)
+        if rating in {"1", "2", "3", "4", "5"}:
+            qs = qs.filter(rating=int(rating))
+        ordering = {
+            "highest": ("-rating", "-helpful_count", "-created_at"),
+            "lowest": ("rating", "-created_at"),
+            "helpful": ("-helpful_count", "-rating", "-created_at"),
+            "newest": ("-created_at",),
+        }.get(sort, ("-created_at",))
+        qs = qs.order_by(*ordering)
         return qs
 
     def get_serializer_class(self):
         return ReviewCreateSerializer if self.action == "create" else ReviewSerializer
 
     def create(self, request, *args, **kwargs):
+        photos = request.FILES.getlist("photos")
+        legacy_photo = request.FILES.get("photo")
+        uploaded_count = len(photos) or (1 if legacy_photo else 0)
+        if uploaded_count > 5:
+            return Response({"photos": "Upload up to 5 images."}, status=400)
         ser = ReviewCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         slug = ser.validated_data.get("tour_slug", "")
@@ -386,28 +437,89 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gen
             review.is_approved = True
             review.booking = Booking.objects.filter(user=user, slot__tour=tour, status="paid").order_by("-created_at").first()
         review.save()
-        ActivityLog.log("review.submitted", f"{review.author_name} – {review.rating}★ – {'auto-approved' if review.is_approved else 'pending'}",
-                         level="info", actor=(user.email if user else review.author_email or "anonymous"),
-                         tour=tour.slug if tour else "")
+        for index, photo in enumerate(photos):
+            ReviewPhoto.objects.create(review=review, image=photo, sort_order=index)
+        try:
+            send_email(
+                settings.ADMIN_EMAIL,
+                f"New review: {review.rating} stars from {review.author_name}",
+                review_moderation_admin_html(review),
+                include_unsubscribe=False,
+            )
+        except Exception:
+            logger.exception("Review moderation email failed for review %s.", review.id)
         return Response({
             "ok": True,
             "pending_moderation": not review.is_approved,
-            "review": ReviewSerializer(review).data,
+            "review": ReviewSerializer(review, context={"request": request}).data,
         }, status=201)
+
+    @action(detail=True, methods=["post"], permission_classes=[AllowAny])
+    def helpful(self, request, pk=None):
+        review = self.get_queryset().filter(pk=pk, is_approved=True).first()
+        if not review:
+            return Response({"detail": "Review not found."}, status=404)
+
+        user = request.user if request.user.is_authenticated else None
+        if user:
+            vote, created = ReviewHelpfulVote.objects.get_or_create(review=review, user=user)
+        else:
+            if not request.session.session_key:
+                request.session.create()
+            vote, created = ReviewHelpfulVote.objects.get_or_create(
+                review=review,
+                user=None,
+                session_key=request.session.session_key,
+            )
+
+        if created:
+            Review.objects.filter(pk=review.pk).update(helpful_count=F("helpful_count") + 1)
+            review.refresh_from_db(fields=["helpful_count"])
+
+        return Response({
+            "ok": True,
+            "created": created,
+            "helpful_count": review.helpful_count,
+            "helpful_by_me": True,
+        })
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def review_stats(request):
+    cache_key = ALL_REVIEW_STATS_CACHE_KEY
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+    payload = build_review_stats_payload(Review.objects.filter(is_approved=True))
+    cache.set(cache_key, payload, getattr(settings, "REVIEW_STATS_CACHE_SECONDS", 300))
+    return Response(payload)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def tour_review_stats(request, slug):
-    qs = Review.objects.filter(is_approved=True, tour__slug=slug)
+    tour_id = Tour.objects.filter(slug=slug, is_active=True).values_list("id", flat=True).first()
+    if not tour_id:
+        return Response({"count": 0, "average": 0, "breakdown": {}})
+    cache_key = f"{REVIEW_STATS_CACHE_PREFIX}{tour_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+    payload = build_review_stats_payload(Review.objects.filter(is_approved=True, tour_id=tour_id))
+    cache.set(cache_key, payload, getattr(settings, "REVIEW_STATS_CACHE_SECONDS", 300))
+    return Response(payload)
+
+
+def build_review_stats_payload(qs):
     summary = qs.aggregate(total=Count("id"), average=Avg("rating"))
     total = summary["total"] or 0
     if total == 0:
-        return Response({"count": 0, "average": 0, "breakdown": {}})
+        return {"count": 0, "average": 0, "breakdown": {}}
     rows = qs.values("rating").annotate(total=Count("id"))
     breakdown = {str(i): 0 for i in range(1, 6)}
     breakdown.update({str(row["rating"]): row["total"] for row in rows})
-    return Response({"count": total, "average": round(summary["average"] or 0, 2), "breakdown": breakdown})
+    return {"count": total, "average": round(summary["average"] or 0, 2), "breakdown": breakdown}
 
 
 @api_view(["POST"])
@@ -432,11 +544,10 @@ def password_reset_request(request):
             try:
                 send_email(user.email, "Reset your Dolphin Island Tours password",
                            password_reset_html(reset_url, name=user.first_name))
-                ActivityLog.log("auth.reset_requested", email, level="info", actor=email)
-            except Exception as e:
-                ActivityLog.log("auth.reset_email_failed", f"{email}: {e}", level="error", actor=email)
+            except Exception:
+                pass
         except User.DoesNotExist:
-            ActivityLog.log("auth.reset_no_user", email, level="info", actor=email)
+            pass
     return Response({"ok": True}, status=200)
 
 
@@ -466,8 +577,25 @@ def password_reset_confirm(request):
         return Response({"password": e.messages}, status=400)
     user.set_password(new_pw)
     user.save()
-    ActivityLog.log("auth.reset_completed", user.email, level="success", actor=user.email)
     return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def unsubscribe_marketing(request, token):
+    try:
+        data = signing.loads(token, salt="marketing-unsubscribe", max_age=60 * 60 * 24 * 365 * 5)
+        email = (data.get("email") or "").strip().lower()
+    except Exception:
+        return HttpResponse("This unsubscribe link is invalid or expired.", status=400, content_type="text/plain")
+    if not email:
+        return HttpResponse("This unsubscribe link is invalid.", status=400, content_type="text/plain")
+    User.objects.filter(email__iexact=email).update(accepts_marketing=False)
+    MailingListEntry.objects.filter(email__iexact=email).update(subscribed=False)
+    return HttpResponse(
+        "You have been unsubscribed from Dolphin Island Tours marketing emails.",
+        content_type="text/plain",
+    )
 
 
 @api_view(["POST"])
@@ -501,12 +629,24 @@ class SiteSettingsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        cached = cache.get(SITE_PAYLOAD_CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
         s = SiteSettings.get()
         data = SiteSettingsSerializer(s).data
         images = {si.key: SiteImageSerializer(si).data for si in SiteImage.objects.all()}
         data["images"] = images
-        pages = {p.page: PageContentSerializer(p).data for p in PageContent.objects.select_related("hero_image")}
+        pages = {
+            p.page: PageContentSerializer(p).data
+            for p in PageContent.objects.select_related("hero_image").prefetch_related("sections__image")
+        }
         data["pages"] = pages
+        nav_links = NavigationLink.objects.filter(is_active=True).order_by("area", "sort_order", "id")
+        data["navigation"] = {
+            "header": NavigationLinkSerializer([link for link in nav_links if link.area == "header"], many=True).data,
+            "footer": NavigationLinkSerializer([link for link in nav_links if link.area == "footer"], many=True).data,
+        }
+        cache.set(SITE_PAYLOAD_CACHE_KEY, data, getattr(settings, "SITE_CACHE_SECONDS", 300))
         return Response(data)
 
 
@@ -519,13 +659,12 @@ class ContactView(APIView):
         ser = ContactMessageSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         msg = ser.save()
-        ActivityLog.log("contact.received", f"{msg.name} <{msg.email}>", level="info",
-                         actor=msg.email, subject=msg.subject)
         try:
-            send_email(settings.ADMIN_EMAIL, f"New inquiry from {msg.name}", contact_admin_html(msg))
+            send_email(settings.ADMIN_EMAIL, f"New inquiry from {msg.name}", contact_admin_html(msg), include_unsubscribe=False)
             send_email(msg.email, "We got your message – Dolphin Island Tours", contact_ack_html(msg))
-        except Exception as e:
-            ActivityLog.log("contact.email_failed", str(e), level="warn", actor=msg.email)
+            logger.info("Contact form emails sent for message %s.", msg.pk)
+        except Exception:
+            logger.exception("Contact form email failed for message %s.", msg.pk)
         return Response({"ok": True}, status=201)
 
 
@@ -586,12 +725,10 @@ def robots_txt(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def config(request):
-    site_settings = SiteSettings.get()
     return Response({
         "price_per_person": settings.PRICE_PER_PERSON,
         "min_party": settings.MIN_PARTY,
         "max_party": settings.MAX_PARTY,
-        "tax_rate_percent": str(site_settings.tax_rate_percent),
         "square_app_id": settings.SQUARE_APP_ID,
         "square_location_id": settings.SQUARE_LOCATION_ID,
         "square_env": settings.SQUARE_ENV,

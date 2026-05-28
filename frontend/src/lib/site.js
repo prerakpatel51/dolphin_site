@@ -15,11 +15,28 @@ const DEFAULT_SETTINGS = {
   maps_url: "https://maps.google.com/?q=2700+Harbortown+Drive+Merritt+Island+FL",
   map_embed_url: "https://www.google.com/maps?q=2700+Harbortown+Drive+Merritt+Island+FL&output=embed",
   price_blurb: "$60 per person · 3-6 guests",
-  tax_rate_percent: "0.00",
   review_count: 500,
   average_rating: "5.0",
   images: {},
   pages: {},
+  navigation: {
+    header: [
+      { label: "Tours", url: "/tours", visibility: "all" },
+      { label: "Reviews", url: "/reviews", visibility: "all" },
+      { label: "About", url: "/about", visibility: "all" },
+      { label: "Contact", url: "/contact", visibility: "all" },
+      { label: "My Bookings", url: "/bookings", visibility: "authenticated" },
+      { label: "Account", url: "/account", visibility: "authenticated" },
+      { label: "Login", url: "/login", visibility: "anonymous" },
+      { label: "Sign up", url: "/signup", visibility: "anonymous", is_button: true },
+    ],
+    footer: [
+      { label: "Tours", url: "/tours", visibility: "all" },
+      { label: "Reviews", url: "/reviews", visibility: "all" },
+      { label: "About", url: "/about", visibility: "all" },
+      { label: "Contact", url: "/contact", visibility: "all" },
+    ],
+  },
 };
 
 const DEFAULT_PAGES = {
@@ -38,7 +55,7 @@ const DEFAULT_PAGES = {
     intro_eyebrow: "What you'll see",
     intro_title: "A local Space Coast boat tour built around wildlife.",
     section_one_title: "Book a Merritt Island boat tour.",
-    section_two_title: "500+ five-star trips.",
+    section_two_title: "Guest reviews.",
     cta_title: "At the Harbortown marina.",
     cta_body: "Tours leave on time - arrive 15 minutes early.",
   },
@@ -73,6 +90,36 @@ const DEFAULT_PAGES = {
     section_two_title: "Send a message",
     cta_title: "Thanks - we got it.",
     cta_body: "Check your inbox for a confirmation. We'll reply within one business day.",
+  },
+  reviews: {
+    seo_title: "Guest Reviews | Dolphin Island Tours",
+    seo_description: "Read verified guest reviews for Dolphin Island Tours across wildlife, sunset, dolphin, and Space Coast boat tours.",
+  },
+  book: {
+    seo_title: "Book a Tour | Dolphin Island Tours",
+    seo_description: "Book a Dolphin Island Tours boat tour.",
+  },
+  account: {
+    seo_title: "Account | Dolphin Island Tours",
+    seo_description: "Manage your Dolphin Island Tours account details and marketing email preferences.",
+  },
+  bookings: {
+    seo_title: "My Bookings | Dolphin Island Tours",
+    seo_description: "Review your Dolphin Island Tours bookings and receipts.",
+  },
+  login: {
+    seo_title: "Login | Dolphin Island Tours",
+    seo_description: "Log in to your Dolphin Island Tours account.",
+  },
+  signup: {
+    seo_title: "Sign Up | Dolphin Island Tours",
+    seo_description: "Create a Dolphin Island Tours account.",
+  },
+  forgot_password: {
+    seo_title: "Forgot Password | Dolphin Island Tours",
+  },
+  reset_password: {
+    seo_title: "Reset Password | Dolphin Island Tours",
   },
 };
 

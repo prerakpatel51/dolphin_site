@@ -1,9 +1,32 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.db import close_old_connections
+from django.db.models.functions import Lower
+from django.db.models.signals import post_delete, post_save, pre_delete
+from django.dispatch import receiver
+from concurrent.futures import ThreadPoolExecutor
+import logging
 import uuid
 import re
+
+
+SITE_SETTINGS_CACHE_KEY = "site-settings:v1"
+SITE_PAYLOAD_CACHE_KEY = "site-payload:v1"
+REVIEW_STATS_CACHE_PREFIX = "tour-review-stats:v1:"
+ALL_REVIEW_STATS_CACHE_KEY = "review-stats:v1:all"
+logger = logging.getLogger(__name__)
+_audit_log_executor = None
+
+
+def audit_log_executor():
+    global _audit_log_executor
+    if _audit_log_executor is None:
+        workers = max(1, int(getattr(settings, "AUDIT_LOG_WORKERS", 2)))
+        _audit_log_executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="audit-log")
+    return _audit_log_executor
 
 
 class User(AbstractUser):
@@ -29,6 +52,63 @@ class User(AbstractUser):
             raise ValidationError(errors)
 
 
+class ActivityLog(models.Model):
+    """Durable audit trail for business events worth searching later."""
+    action = models.CharField(max_length=80)
+    actor = models.CharField(max_length=200, blank=True, help_text="User email or 'system'.")
+    message = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"], name="audit_created_idx"),
+            models.Index(fields=["action", "-created_at"], name="audit_action_created_idx"),
+            models.Index(fields=["actor", "-created_at"], name="audit_actor_created_idx"),
+        ]
+
+    def __str__(self):
+        actor = self.actor or "system"
+        return f"{self.action} by {actor} at {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+    @classmethod
+    def log(cls, action, *, actor="", message="", metadata=None, async_=None):
+        if not action:
+            raise ValueError("ActivityLog action is required.")
+
+        payload = {
+            "action": action,
+            "actor": actor or "system",
+            "message": message or "",
+            "metadata": metadata or {},
+        }
+
+        if async_ is None:
+            async_ = getattr(settings, "AUDIT_LOG_ASYNC", True)
+
+        if not async_:
+            return cls._create_log(payload)
+
+        future = audit_log_executor().submit(cls._create_log, payload)
+        future.add_done_callback(cls._handle_async_error)
+        return future
+
+    @classmethod
+    def _create_log(cls, payload):
+        close_old_connections()
+        try:
+            return cls.objects.create(**payload)
+        finally:
+            close_old_connections()
+
+    @staticmethod
+    def _handle_async_error(future):
+        exc = future.exception()
+        if exc:
+            logger.error("Failed to persist audit log.", exc_info=(type(exc), exc, exc.__traceback__))
+
+
 class Tour(models.Model):
     """Tour product type (Sunset Cruise, Dolphin Wildlife Excursion, etc.)."""
     slug = models.SlugField(unique=True)
@@ -37,6 +117,12 @@ class Tour(models.Model):
     long_description = models.TextField(blank=True)
     duration_minutes = models.PositiveIntegerField(default=120)
     price_per_person = models.PositiveIntegerField(default=60, help_text="USD per guest.")
+    tax_rate_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        help_text="Sales tax percentage for this tour. Example: 7.00 for 7%.",
+    )
     min_party = models.PositiveSmallIntegerField(default=3)
     max_party = models.PositiveSmallIntegerField(default=6)
     image = models.ImageField(upload_to="tours/", blank=True, null=True,
@@ -72,6 +158,7 @@ class Tour(models.Model):
 class SiteImage(models.Model):
     """Reusable site images (hero, gallery, about). Edit via admin."""
     KEY_CHOICES = [
+        ("logo", "Logo"),
         ("hero", "Homepage hero"),
         ("tours_hero", "Tours page hero"),
         ("contact_hero", "Contact page hero"),
@@ -135,12 +222,6 @@ class SiteSettings(models.Model):
         default="https://www.google.com/maps?q=2700+Harbortown+Drive+Merritt+Island+FL&output=embed",
     )
     price_blurb = models.CharField(max_length=160, default="$60 per person · 3–6 guests", blank=True)
-    tax_rate_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        help_text="Sales tax percentage added at checkout. Example: 7.00 for 7%.",
-    )
     review_count = models.PositiveIntegerField(default=500)
     average_rating = models.DecimalField(max_digits=2, decimal_places=1, default=5.0)
     google_analytics_id = models.CharField(max_length=40, blank=True, help_text="e.g. G-XXXXXXXXXX")
@@ -165,7 +246,11 @@ class SiteSettings(models.Model):
 
     @classmethod
     def get(cls):
+        obj = cache.get(SITE_SETTINGS_CACHE_KEY)
+        if obj is not None:
+            return obj
         obj, _ = cls.objects.get_or_create(pk=1)
+        cache.set(SITE_SETTINGS_CACHE_KEY, obj, getattr(settings, "SITE_CACHE_SECONDS", 300))
         return obj
 
 
@@ -174,8 +259,16 @@ class PageContent(models.Model):
     PAGE_CHOICES = [
         ("home", "Home"),
         ("tours", "Tours listing"),
+        ("book", "Booking"),
+        ("reviews", "Reviews"),
         ("about", "About"),
         ("contact", "Contact"),
+        ("login", "Login"),
+        ("signup", "Sign up"),
+        ("account", "Account"),
+        ("bookings", "My bookings"),
+        ("forgot_password", "Forgot password"),
+        ("reset_password", "Reset password"),
     ]
     page = models.CharField(max_length=32, choices=PAGE_CHOICES, unique=True)
     hero_image = models.ForeignKey(
@@ -221,6 +314,84 @@ class PageContent(models.Model):
         return self.get_page_display()
 
 
+class PageSection(models.Model):
+    """Admin-managed content band for a specific page."""
+    STYLE_CHOICES = [
+        ("light", "Light"),
+        ("ocean", "Ocean"),
+        ("sunset", "Sunset / sale"),
+        ("dark", "Dark"),
+    ]
+    page_content = models.ForeignKey(PageContent, on_delete=models.CASCADE, related_name="sections")
+    title = models.CharField(max_length=160)
+    eyebrow = models.CharField(max_length=80, blank=True)
+    body = models.TextField(blank=True)
+    image = models.ForeignKey(
+        SiteImage,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="page_sections",
+        help_text="Optional image shown beside the content.",
+    )
+    background_color = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Optional CSS color, e.g. #fff7ed. Leave blank to use the selected style.",
+    )
+    text_color = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Optional CSS color, e.g. #0b3a52. Leave blank to use the selected style.",
+    )
+    style = models.CharField(max_length=12, choices=STYLE_CHOICES, default="light")
+    cta_label = models.CharField(max_length=80, blank=True)
+    cta_url = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        indexes = [
+            models.Index(fields=["page_content", "is_active", "sort_order"], name="pagesection_page_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.page_content}: {self.title}"
+
+
+class NavigationLink(models.Model):
+    """Editable global header/footer link."""
+    AREA_CHOICES = [
+        ("header", "Header"),
+        ("footer", "Footer"),
+    ]
+    VISIBILITY_CHOICES = [
+        ("all", "Everyone"),
+        ("anonymous", "Logged-out users"),
+        ("authenticated", "Logged-in users"),
+    ]
+    area = models.CharField(max_length=12, choices=AREA_CHOICES, default="header")
+    label = models.CharField(max_length=80)
+    url = models.CharField(max_length=200)
+    visibility = models.CharField(max_length=16, choices=VISIBILITY_CHOICES, default="all")
+    is_button = models.BooleanField(default=False, help_text="Use primary button styling in the header.")
+    opens_new_tab = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["area", "sort_order", "id"]
+        indexes = [
+            models.Index(fields=["area", "is_active", "sort_order"], name="navlink_area_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_area_display()}: {self.label}"
+
+
 class ContactMessage(models.Model):
     """Visitor query/contact form submission."""
     name = models.CharField(max_length=120)
@@ -237,27 +408,6 @@ class ContactMessage(models.Model):
     def __str__(self):
         label = self.subject or (self.created_at.strftime("%Y-%m-%d") if self.created_at else "unsaved")
         return f"{self.name} <{self.email}> – {label}"
-
-
-class ActivityLog(models.Model):
-    """Audit log for important system events."""
-    LEVELS = [("info", "Info"), ("warn", "Warning"), ("error", "Error"), ("success", "Success")]
-    level = models.CharField(max_length=10, choices=LEVELS, default="info")
-    action = models.CharField(max_length=80)
-    actor = models.CharField(max_length=200, blank=True, help_text="User email or 'system'")
-    message = models.TextField(blank=True)
-    metadata = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"[{self.level}] {self.action} – {self.created_at:%Y-%m-%d %H:%M}"
-
-    @classmethod
-    def log(cls, action, message="", level="info", actor="system", **metadata):
-        return cls.objects.create(action=action, message=message, level=level, actor=actor, metadata=metadata)
 
 
 class EmailDeliveryJob(models.Model):
@@ -421,6 +571,83 @@ class Booking(models.Model):
         return f"{self.customer_name} – {self.slot} – {self.status}"
 
 
+class DeletedBookingReport(models.Model):
+    """Snapshot kept for reports after a booking row is deleted."""
+    booking_id = models.UUIDField(unique=True)
+    user_email = models.EmailField(blank=True)
+    customer_name = models.CharField(max_length=120)
+    customer_email = models.EmailField()
+    customer_phone = models.CharField(max_length=32, blank=True)
+    tour_name = models.CharField(max_length=120, blank=True)
+    tour_date = models.DateField(blank=True, null=True)
+    tour_time = models.TimeField(blank=True, null=True)
+    party_size = models.PositiveSmallIntegerField()
+    status = models.CharField(max_length=16)
+    price_per_person_cents = models.PositiveIntegerField()
+    discount_cents = models.PositiveIntegerField(default=0)
+    tax_cents = models.PositiveIntegerField(default=0)
+    total_cents = models.PositiveIntegerField()
+    square_payment_id = models.CharField(max_length=128, blank=True)
+    square_order_id = models.CharField(max_length=128, blank=True)
+    promo_code_text = models.CharField(max_length=40, blank=True)
+    travelers = models.JSONField(default=list, blank=True)
+    special_requests = models.TextField(blank=True)
+    original_created_at = models.DateTimeField()
+    original_updated_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(auto_now_add=True)
+    deleted_by = models.EmailField(blank=True)
+
+    class Meta:
+        ordering = ["-original_created_at"]
+        indexes = [
+            models.Index(fields=["-original_created_at"], name="delbook_created_idx"),
+            models.Index(fields=["status", "-original_created_at"], name="delbook_status_created_idx"),
+            models.Index(fields=["customer_email", "-original_created_at"], name="delbook_email_created_idx"),
+        ]
+
+    def __str__(self):
+        return f"Deleted booking {self.booking_id} – {self.customer_email}"
+
+
+def archive_booking_for_report(booking, deleted_by=""):
+    """Persist a booking snapshot before deletion so reports keep transaction history."""
+    existing = DeletedBookingReport.objects.filter(booking_id=booking.id).first()
+    if existing:
+        if deleted_by and not existing.deleted_by:
+            existing.deleted_by = deleted_by
+            existing.save(update_fields=["deleted_by"])
+        return existing, False
+    return DeletedBookingReport.objects.create(
+        booking_id=booking.id,
+        user_email=booking.user.email if booking.user_id else "",
+        customer_name=booking.customer_name,
+        customer_email=booking.customer_email,
+        customer_phone=booking.customer_phone,
+        tour_name=booking.slot.tour.name if booking.slot_id else "",
+        tour_date=booking.slot.date if booking.slot_id else None,
+        tour_time=booking.slot.time if booking.slot_id else None,
+        party_size=booking.party_size,
+        status=booking.status,
+        price_per_person_cents=booking.price_per_person_cents,
+        discount_cents=booking.discount_cents,
+        tax_cents=booking.tax_cents,
+        total_cents=booking.total_cents,
+        square_payment_id=booking.square_payment_id,
+        square_order_id=booking.square_order_id,
+        promo_code_text=booking.promo_code.code if booking.promo_code_id else "",
+        travelers=booking.travelers,
+        special_requests=booking.special_requests,
+        original_created_at=booking.created_at,
+        original_updated_at=booking.updated_at,
+        deleted_by=deleted_by or "",
+    ), True
+
+
+@receiver(pre_delete, sender=Booking)
+def archive_booking_on_delete(sender, instance, **kwargs):
+    archive_booking_for_report(instance)
+
+
 class Review(models.Model):
     """Customer review with star rating. Admin-moderated."""
     tour = models.ForeignKey(Tour, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviews")
@@ -431,6 +658,9 @@ class Review(models.Model):
     rating = models.PositiveSmallIntegerField(default=5, help_text="1–5 stars")
     title = models.CharField(max_length=160, blank=True)
     body = models.TextField()
+    photo = models.ImageField(upload_to="reviews/", blank=True, null=True)
+    reply_text = models.TextField(blank=True, help_text="Public owner reply shown below the review.")
+    helpful_count = models.PositiveIntegerField(default=0)
     is_approved = models.BooleanField(default=False, help_text="Hidden from site until approved.")
     is_featured = models.BooleanField(default=False, help_text="Show on homepage testimonials.")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -445,6 +675,38 @@ class Review(models.Model):
 
     def __str__(self):
         return f"{self.author_name} – {self.rating}★ – {self.tour or 'general'}"
+
+
+class ReviewPhoto(models.Model):
+    """Additional customer photos attached to a review."""
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="photos")
+    image = models.ImageField(upload_to="reviews/")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return f"Photo {self.id} for review {self.review_id}"
+
+
+class ReviewHelpfulVote(models.Model):
+    """One helpful vote per authenticated user or browser session."""
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="helpful_votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="review_helpful_votes")
+    session_key = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["review", "user"], name="review_vote_user_idx"),
+            models.Index(fields=["review", "session_key"], name="review_vote_session_idx"),
+        ]
+
+    def __str__(self):
+        voter = self.user_id or self.session_key or "anonymous"
+        return f"Helpful vote for review {self.review_id} by {voter}"
 
 
 class MailingListEntry(models.Model):
@@ -552,14 +814,54 @@ class EmailCampaign(models.Model):
         from django.contrib.auth import get_user_model
         U = get_user_model()
         if self.audience in ("all_users", "both"):
-            for u in U.objects.exclude(email="").filter(accepts_marketing=True):
-                out.setdefault(u.email.lower(), (u.email, (f"{u.first_name} {u.last_name}".strip() or u.username)))
+            users = (
+                U.objects.exclude(email="")
+                .filter(accepts_marketing=True)
+                .annotate(email_key=Lower("email"))
+                .values_list("email_key", "email", "first_name", "last_name", "username")
+                .order_by("email_key")
+                .iterator(chunk_size=2000)
+            )
+            for email_key, email, first_name, last_name, username in users:
+                name = f"{first_name} {last_name}".strip() or username
+                out.setdefault(email_key, (email, name))
         if self.audience in ("subscribed_users", "both"):
-            for e in MailingListEntry.objects.filter(subscribed=True):
-                out.setdefault(e.email.lower(), (e.email, e.name or ""))
+            entries = (
+                MailingListEntry.objects.filter(subscribed=True)
+                .annotate(email_key=Lower("email"))
+                .values_list("email_key", "email", "name")
+                .order_by("email_key")
+                .iterator(chunk_size=2000)
+            )
+            for email_key, email, name in entries:
+                out.setdefault(email_key, (email, name or ""))
         if self.manual_emails:
             for line in self.manual_emails.splitlines():
                 addr = line.strip()
                 if "@" in addr:
                     out.setdefault(addr.lower(), (addr, ""))
         return list(out.values())
+
+
+def invalidate_site_cache(**kwargs):
+    cache.delete_many([SITE_SETTINGS_CACHE_KEY, SITE_PAYLOAD_CACHE_KEY])
+
+
+def invalidate_review_stats_cache(instance, **kwargs):
+    cache.delete(ALL_REVIEW_STATS_CACHE_KEY)
+    if instance.tour_id:
+        cache.delete(f"{REVIEW_STATS_CACHE_PREFIX}{instance.tour_id}")
+
+
+post_save.connect(invalidate_site_cache, sender=SiteSettings)
+post_delete.connect(invalidate_site_cache, sender=SiteSettings)
+post_save.connect(invalidate_site_cache, sender=SiteImage)
+post_delete.connect(invalidate_site_cache, sender=SiteImage)
+post_save.connect(invalidate_site_cache, sender=PageContent)
+post_delete.connect(invalidate_site_cache, sender=PageContent)
+post_save.connect(invalidate_site_cache, sender=PageSection)
+post_delete.connect(invalidate_site_cache, sender=PageSection)
+post_save.connect(invalidate_site_cache, sender=NavigationLink)
+post_delete.connect(invalidate_site_cache, sender=NavigationLink)
+post_save.connect(invalidate_review_stats_cache, sender=Review)
+post_delete.connect(invalidate_review_stats_cache, sender=Review)

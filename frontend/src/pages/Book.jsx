@@ -174,7 +174,7 @@ export default function Book() {
   const subtotal = price * partySize;
   const discount = promo?.valid ? Math.round((promo.discount_cents || 0) / 100) : 0;
   const taxableTotal = Math.max(0, subtotal - discount);
-  const taxRate = Number(cfg.tax_rate_percent || 0);
+  const taxRate = Number(tour.tax_rate_percent ?? 0);
   const estimatedTax = Math.round(taxableTotal * taxRate) / 100;
   const total = taxableTotal + estimatedTax;
   const canSubmit = !pendingMissing && partySize > 0 && travelers.length === partySize

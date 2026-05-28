@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -10,8 +10,13 @@ const REVIEW_BODY_MAX = 1000;
 export default function Reviews({ tourSlug }) {
   const { user } = useAuth();
   const [reviews, setReviews] = useState([]);
+  const [ownReview, setOwnReview] = useState(null);
   const [stats, setStats] = useState({ count: 0, average: 0, breakdown: {} });
   const [form, setForm] = useState({ author_name: "", author_email: "", rating: 5, title: "", body: "" });
+  const [photos, setPhotos] = useState([]);
+  const [sort, setSort] = useState("newest");
+  const [ratingFilter, setRatingFilter] = useState("");
+  const [visibleCount, setVisibleCount] = useState(6);
   const [hasPaidBooking, setHasPaidBooking] = useState(false);
   const [checkingBooking, setCheckingBooking] = useState(false);
   const [sent, setSent] = useState(false);
@@ -19,13 +24,32 @@ export default function Reviews({ tourSlug }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    api.reviews({ tour: tourSlug }).then(d => setReviews(d.results || d));
+    const params = { tour: tourSlug, sort };
+    if (ratingFilter) params.rating = ratingFilter;
+    api.reviews(params).then(d => {
+      setReviews(d.results || d);
+      setVisibleCount(6);
+    });
     if (tourSlug) api.reviewStats(tourSlug).then(setStats);
     if (user) setForm(f => ({
       ...f,
       author_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username,
       author_email: user.email,
     }));
+  }, [tourSlug, user, sort, ratingFilter]);
+
+  useEffect(() => {
+    let alive = true;
+    setOwnReview(null);
+    if (!user || !tourSlug) return () => { alive = false; };
+    api.reviews({ tour: tourSlug }).then(d => {
+      if (!alive) return;
+      const rows = d.results || d;
+      setOwnReview(rows.find(r => r.mine) || null);
+    }).catch(() => {
+      if (alive) setOwnReview(null);
+    });
+    return () => { alive = false; };
   }, [tourSlug, user]);
 
   useEffect(() => {
@@ -48,17 +72,48 @@ export default function Reviews({ tourSlug }) {
     return () => { alive = false; };
   }, [tourSlug, user]);
 
-  const myReview = user ? reviews.find(r => r.mine) : null;
+  const myReview = user ? (ownReview || reviews.find(r => r.mine)) : null;
+  const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
+  const hasMoreReviews = visibleCount < reviews.length;
+  const breakdown = stats.breakdown || {};
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true); setErr("");
     try {
-      const res = await api.submitReview({ ...form, tour_slug: tourSlug });
+      if (photos.length > 5) {
+        setErr("Upload up to 5 images.");
+        setBusy(false);
+        return;
+      }
+      const payload = new FormData();
+      Object.entries({ ...form, tour_slug: tourSlug }).forEach(([key, value]) => payload.append(key, value));
+      photos.forEach(photo => payload.append("photos", photo));
+      const res = await api.submitReview(payload);
       setSent(true);
-      if (res?.review) setReviews(r => [res.review, ...r.filter(x => x.id !== res.review.id)]);
+      setPhotos([]);
+      if (res?.review) {
+        setOwnReview(res.review);
+        setReviews(r => [res.review, ...r.filter(x => x.id !== res.review.id)]);
+      }
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
+  }
+
+  async function markHelpful(reviewId) {
+    setReviews(items => items.map(r => (
+      r.id === reviewId ? { ...r, helpful_by_me: true, helpful_count: (r.helpful_count || 0) + (r.helpful_by_me ? 0 : 1) } : r
+    )));
+    try {
+      const res = await api.markReviewHelpful(reviewId);
+      setReviews(items => items.map(r => (
+        r.id === reviewId ? { ...r, helpful_by_me: res.helpful_by_me, helpful_count: res.helpful_count } : r
+      )));
+    } catch {
+      setReviews(items => items.map(r => (
+        r.id === reviewId ? { ...r, helpful_by_me: false, helpful_count: Math.max(0, (r.helpful_count || 1) - 1) } : r
+      )));
+    }
   }
 
   return (
@@ -79,25 +134,110 @@ export default function Reviews({ tourSlug }) {
         )}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4 sm:gap-6 mb-10">
+      {stats.count > 0 && (
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_260px] gap-5 mb-8">
+          <div className="card p-5 sm:p-6">
+            <div className="space-y-2">
+              {[5, 4, 3, 2, 1].map(star => {
+                const count = Number(breakdown[String(star)] || 0);
+                const percent = stats.count ? Math.round((count / stats.count) * 100) : 0;
+                const active = ratingFilter === String(star);
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRatingFilter(active ? "" : String(star))}
+                    className={`w-full grid grid-cols-[56px_minmax(0,1fr)_44px] items-center gap-3 text-left text-sm ${active ? "text-ocean-900 font-semibold" : "text-ocean-700"}`}
+                    aria-pressed={active}
+                  >
+                    <span>{star} star</span>
+                    <span className="h-3 rounded-full bg-ocean-100 overflow-hidden">
+                      <span className="block h-full rounded-full bg-amber-400" style={{ width: `${percent}%` }} />
+                    </span>
+                    <span className="text-right tabular-nums">{percent}%</span>
+                  </button>
+                );
+              })}
+            </div>
+            {ratingFilter && (
+              <button type="button" onClick={() => setRatingFilter("")} className="mt-4 text-sm text-ocean-700 underline">
+                Show all ratings
+              </button>
+            )}
+          </div>
+          <div className="card p-5 sm:p-6">
+            <label className="label" htmlFor="review-sort">Sort reviews</label>
+            <select id="review-sort" className="input" value={sort} onChange={e => setSort(e.target.value)}>
+              <option value="newest">Newest</option>
+              <option value="highest">Highest Rated</option>
+              <option value="lowest">Lowest Rated</option>
+              <option value="helpful">Most Helpful</option>
+            </select>
+            <p className="text-sm text-ocean-600 mt-3">
+              Showing {reviews.length} review{reviews.length !== 1 ? "s" : ""}{ratingFilter ? ` with ${ratingFilter} star${ratingFilter !== "1" ? "s" : ""}` : ""}.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-4 sm:gap-6 mb-6">
         {reviews.length === 0 && <p className="text-ocean-600 col-span-full">No reviews yet — be the first!</p>}
-        {reviews.slice(0, 6).map(r => (
+        {visibleReviews.map(r => (
           <article key={r.id} className={`card p-5 sm:p-6 ${r.pending ? "border-amber-300 bg-amber-50/40" : ""}`}>
             <div className="flex items-start justify-between gap-3">
               <Stars value={r.rating} />
-              {r.mine && (
-                <span className="text-[10px] uppercase tracking-wider rounded-full bg-ocean-100 text-ocean-800 px-2 py-0.5 font-semibold">Your review</span>
-              )}
-              {r.pending && (
-                <span className="text-[10px] uppercase tracking-wider rounded-full bg-amber-200 text-amber-900 px-2 py-0.5 font-semibold">Pending</span>
-              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {r.verified_guest && (
+                  <span className="text-[10px] uppercase tracking-wider rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 font-semibold">Verified Guest</span>
+                )}
+                {r.mine && (
+                  <span className="text-[10px] uppercase tracking-wider rounded-full bg-ocean-100 text-ocean-800 px-2 py-0.5 font-semibold">Your review</span>
+                )}
+                {r.pending && (
+                  <span className="text-[10px] uppercase tracking-wider rounded-full bg-amber-200 text-amber-900 px-2 py-0.5 font-semibold">Pending</span>
+                )}
+              </div>
             </div>
+            {(r.photo_urls?.length || r.photo_url) && (
+              <div className={`mt-4 grid gap-2 ${((r.photo_urls?.length || 0) > 1) ? "grid-cols-2" : ""}`}>
+                {(r.photo_urls?.length ? r.photo_urls : [r.photo_url]).map((url, index) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt=""
+                    className={`w-full object-cover rounded-lg ${index === 0 ? "aspect-[4/3]" : "aspect-square"}`}
+                    loading="lazy"
+                  />
+                ))}
+              </div>
+            )}
             {r.title && <h3 className="text-lg mt-2">{r.title}</h3>}
             <p className="text-ocean-800 mt-2 leading-relaxed whitespace-pre-line">{r.body}</p>
+            {r.reply_text && (
+              <div className="mt-4 rounded-lg border border-ocean-100 bg-ocean-50 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-ocean-500 font-semibold">Owner reply</p>
+                <p className="text-ocean-800 mt-2 leading-relaxed whitespace-pre-line">{r.reply_text}</p>
+              </div>
+            )}
             <p className="text-sm text-ocean-500 mt-4">— {r.author_name} · {new Date(r.created_at).toLocaleDateString()}</p>
+            <button
+              type="button"
+              disabled={r.helpful_by_me}
+              onClick={() => markHelpful(r.id)}
+              className={`mt-4 text-sm font-semibold ${r.helpful_by_me ? "text-ocean-500" : "text-ocean-700 hover:text-ocean-900"}`}
+            >
+              Helpful{r.helpful_count ? ` (${r.helpful_count})` : ""}
+            </button>
           </article>
         ))}
       </div>
+      {hasMoreReviews && (
+        <div className="mb-10 text-center">
+          <button type="button" className="btn-ghost" onClick={() => setVisibleCount(count => count + 6)}>
+            Load more reviews
+          </button>
+        </div>
+      )}
 
       {myReview ? (
         <div className="card p-5 sm:p-8 bg-ocean-50 border-ocean-200">
@@ -176,6 +316,22 @@ export default function Reviews({ tourSlug }) {
                     {form.body.length}/{REVIEW_BODY_MAX}
                   </span>
                 </div>
+              </div>
+              <div>
+                <label className="label" htmlFor="review-photo">Photos (optional, up to 5)</label>
+                <input
+                  id="review-photo"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="input"
+                  onChange={e => {
+                    const selected = Array.from(e.target.files || []).slice(0, 5);
+                    setPhotos(selected);
+                    setErr((e.target.files?.length || 0) > 5 ? "Only the first 5 images will be uploaded." : "");
+                  }}
+                />
+                {photos.length > 0 && <p className="text-xs text-ocean-500 mt-1">{photos.map(photo => photo.name).join(", ")}</p>}
               </div>
               {err && <p className="text-red-600 text-sm">{err}</p>}
               <button disabled={busy} className="btn-primary w-full sm:w-auto">
