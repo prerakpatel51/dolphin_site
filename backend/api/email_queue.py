@@ -9,6 +9,23 @@ from .models import EmailDeliveryJob, EmailDeliveryRecipient, PromoCode
 logger = logging.getLogger(__name__)
 
 
+def enqueue_transactional_email(to, subject, html, source_label):
+    with transaction.atomic():
+        job = EmailDeliveryJob.objects.create(
+            name=subject,
+            source=f"txn:{source_label}",
+            status="queued",
+            total_count=1,
+        )
+        EmailDeliveryRecipient.objects.create(
+            job=job,
+            email=to,
+            subject=subject,
+            html=html,
+        )
+    return job
+
+
 def enqueue_bulk_promotional_email(
     *,
     subject,

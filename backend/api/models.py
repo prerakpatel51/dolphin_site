@@ -90,15 +90,19 @@ class ActivityLog(models.Model):
         if not async_:
             return cls._create_log(payload)
 
-        future = audit_log_executor().submit(cls._create_log, payload)
+        future = audit_log_executor().submit(cls._create_log_in_thread, payload)
         future.add_done_callback(cls._handle_async_error)
         return future
 
     @classmethod
     def _create_log(cls, payload):
+        return cls.objects.create(**payload)
+
+    @classmethod
+    def _create_log_in_thread(cls, payload):
         close_old_connections()
         try:
-            return cls.objects.create(**payload)
+            return cls._create_log(payload)
         finally:
             close_old_connections()
 

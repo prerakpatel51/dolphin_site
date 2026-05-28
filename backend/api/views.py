@@ -29,6 +29,7 @@ from .serializers import (UserSerializer, TourSerializer, TourSlotSerializer, Bo
                           ReviewSerializer, ReviewCreateSerializer)
 from .emails import (send_email, booking_receipt_html, admin_notify_html, contact_admin_html,
                      contact_ack_html, review_moderation_admin_html)
+from .email_queue import enqueue_transactional_email
 from .payments import charge
 import logging
 
@@ -358,11 +359,21 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
         )
 
         try:
-            send_email(booking.customer_email, "Your Dolphin Island Tours booking", booking_receipt_html(booking))
-            send_email(settings.ADMIN_EMAIL, f"New booking: {booking.customer_name}", admin_notify_html(booking), include_unsubscribe=False)
-            logger.info("Booking confirmation emails sent for booking %s.", booking.id)
+            enqueue_transactional_email(
+                booking.customer_email,
+                "Your Dolphin Island Tours booking",
+                booking_receipt_html(booking),
+                "booking_receipt",
+            )
+            enqueue_transactional_email(
+                settings.ADMIN_EMAIL,
+                f"New booking: {booking.customer_name}",
+                admin_notify_html(booking),
+                "booking_admin_notify",
+            )
+            logger.info("Booking confirmation emails queued for booking %s.", booking.id)
         except Exception:
-            logger.exception("Booking confirmation email failed for booking %s.", booking.id)
+            logger.exception("Booking confirmation email queueing failed for booking %s.", booking.id)
 
         if promo_obj:
             promo_obj.used_count = F("used_count") + 1

@@ -1,6 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 
@@ -23,6 +24,8 @@ class Command(BaseCommand):
         batch_size = options["batch_size"]
         if options["workers"]:
             workers = max(1, options["workers"])
+        elif getattr(settings, "IS_TESTING", False):
+            workers = 1
         else:
             workers = 1 if connection.vendor == "sqlite" else 4
 

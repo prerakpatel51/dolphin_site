@@ -806,6 +806,21 @@ class BookingAndPromoTests(ApiTestCase):
         audit = ActivityLog.objects.get(action="booking_payment_verified")
         self.assertEqual(audit.actor, TEST_USER_EMAIL)
         self.assertEqual(audit.metadata["total_cents"], 18000)
+        self.assertEqual(EmailDeliveryJob.objects.filter(source__startswith="txn:").count(), 2)
+        self.assertTrue(
+            EmailDeliveryRecipient.objects.filter(
+                email=self.user.email,
+                subject="Your Dolphin Island Tours booking",
+                status="pending",
+            ).exists()
+        )
+        self.assertTrue(
+            EmailDeliveryRecipient.objects.filter(
+                email="admin@example.com",
+                subject="New booking: Guest User",
+                status="pending",
+            ).exists()
+        )
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_real_payment_mode_requires_source_id_before_creating_booking(self):
@@ -820,8 +835,7 @@ class BookingAndPromoTests(ApiTestCase):
     def test_declined_payment_marks_attempt_failed_without_sending_receipt(self):
         token = self.token_for()
 
-        with patch("api.views.charge", side_effect=RuntimeError("Square error: CARD_DECLINED")), \
-             patch("api.views.send_email") as send:
+        with patch("api.views.charge", side_effect=RuntimeError("Square error: CARD_DECLINED")):
             res = self.post_json(
                 "/api/bookings/create-and-pay/",
                 self.booking_payload(source_id="cnon:card-nonce"),
@@ -833,7 +847,8 @@ class BookingAndPromoTests(ApiTestCase):
         booking = Booking.objects.get()
         self.assertEqual(booking.status, "payment_failed")
         self.assertFalse(booking.square_payment_id)
-        send.assert_not_called()
+        self.assertEqual(EmailDeliveryJob.objects.count(), 0)
+        self.assertEqual(EmailDeliveryRecipient.objects.count(), 0)
         audit = ActivityLog.objects.get(action="booking_payment_failed")
         self.assertEqual(audit.metadata["booking_id"], str(booking.id))
 
