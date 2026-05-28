@@ -13,4 +13,4 @@ RUN adduser --disabled-password --gecos "" appuser \
 USER appuser
 EXPOSE 8000
 ENV GUNICORN_WORKERS=3
-CMD ["sh", "-c", "gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w ${GUNICORN_WORKERS} --access-logfile /dev/null --error-logfile -"]
+CMD ["sh", "-c", "gunicorn dolphin.wsgi:application -b [::]:${PORT:-8000} -w ${GUNICORN_WORKERS} --access-logfile /dev/null --error-logfile -"]
