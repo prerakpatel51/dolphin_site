@@ -55,6 +55,15 @@ export default function App() {
   }, [site, location.pathname, location.search]);
   useEffect(() => { setOpen(false); }, [location.pathname]);
 
+  async function handleLogout() {
+    try {
+      await logout();
+      nav("/");
+    } catch (err) {
+      console.error("Logout failed", err);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-ocean-50 text-ocean-950">
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/90 border-b border-ocean-100/80 shadow-sm shadow-ocean-900/5">
@@ -72,7 +81,7 @@ export default function App() {
               <>
                 <NavItem to="/bookings" preloadKey="bookings">My Bookings</NavItem>
                 <NavItem to="/account" preloadKey="account">Account</NavItem>
-                <button onClick={() => { logout(); nav("/"); }} className="text-ocean-700 hover:text-ocean-900 px-2">Logout</button>
+                <button onClick={handleLogout} className="text-ocean-700 hover:text-ocean-900 px-2">Logout</button>
               </>
             ) : (
               <>
@@ -101,7 +110,10 @@ export default function App() {
                 <>
                   <MItem to="/bookings" preloadKey="bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
                   <MItem to="/account" preloadKey="account" onClick={() => setOpen(false)}>Account</MItem>
-                  <button onClick={() => { setOpen(false); logout(); nav("/"); }}
+                  <button onClick={async () => {
+                    setOpen(false);
+                    await handleLogout();
+                  }}
                     className="text-left px-4 py-3 rounded-xl text-ocean-700 hover:bg-ocean-50">Logout</button>
                 </>
               ) : (

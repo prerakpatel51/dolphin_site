@@ -54,10 +54,6 @@ Admin panel:
 
   http://localhost/admin/
 
-Admin analytics page:
-
-  http://localhost/admin/analytics/
-
 Admin reports page:
 
   http://localhost/admin/reports/

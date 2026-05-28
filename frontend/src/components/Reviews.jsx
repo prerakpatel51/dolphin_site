@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { Stars, StarInput } from "./Stars.jsx";
+import { formatPhotoSize, MAX_REVIEW_PHOTOS, prepareReviewPhotos } from "../lib/reviewPhotos.js";
 
 const REVIEW_TITLE_MAX = 80;
 const REVIEW_BODY_MAX = 1000;
@@ -14,6 +15,9 @@ export default function Reviews({ tourSlug }) {
   const [stats, setStats] = useState({ count: 0, average: 0, breakdown: {} });
   const [form, setForm] = useState({ author_name: "", author_email: "", rating: 5, title: "", body: "" });
   const [photos, setPhotos] = useState([]);
+  const [photoPreviews, setPhotoPreviews] = useState([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
   const [sort, setSort] = useState("newest");
   const [ratingFilter, setRatingFilter] = useState("");
   const [visibleCount, setVisibleCount] = useState(6);
@@ -77,12 +81,26 @@ export default function Reviews({ tourSlug }) {
   const hasMoreReviews = visibleCount < reviews.length;
   const breakdown = stats.breakdown || {};
 
+  useEffect(() => {
+    const previews = photos.map(photo => ({
+      name: photo.name,
+      size: photo.size,
+      url: URL.createObjectURL(photo),
+    }));
+    setPhotoPreviews(previews);
+    return () => previews.forEach(preview => URL.revokeObjectURL(preview.url));
+  }, [photos]);
+
   async function submit(e) {
     e.preventDefault();
+    if (photoBusy) {
+      setErr("Photos are still being prepared. Try again in a moment.");
+      return;
+    }
     setBusy(true); setErr("");
     try {
-      if (photos.length > 5) {
-        setErr("Upload up to 5 images.");
+      if (photos.length > MAX_REVIEW_PHOTOS) {
+        setErr(`Upload up to ${MAX_REVIEW_PHOTOS} images.`);
         setBusy(false);
         return;
       }
@@ -98,6 +116,23 @@ export default function Reviews({ tourSlug }) {
       }
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
+  }
+
+  async function handlePhotoChange(e) {
+    setPhotoBusy(true);
+    setErr("");
+    setPhotoMessage("");
+    try {
+      const result = await prepareReviewPhotos(e.target.files);
+      setPhotos(result.files);
+      setPhotoMessage(result.warnings.join(" "));
+    } catch (error) {
+      setPhotos([]);
+      setErr(error.message || "Photos could not be prepared.");
+    } finally {
+      setPhotoBusy(false);
+      e.target.value = "";
+    }
   }
 
   async function markHelpful(reviewId) {
@@ -325,17 +360,30 @@ export default function Reviews({ tourSlug }) {
                   accept="image/*"
                   multiple
                   className="input"
-                  onChange={e => {
-                    const selected = Array.from(e.target.files || []).slice(0, 5);
-                    setPhotos(selected);
-                    setErr((e.target.files?.length || 0) > 5 ? "Only the first 5 images will be uploaded." : "");
-                  }}
+                  disabled={photoBusy}
+                  onChange={handlePhotoChange}
                 />
-                {photos.length > 0 && <p className="text-xs text-ocean-500 mt-1">{photos.map(photo => photo.name).join(", ")}</p>}
+                <p className="mt-1 text-xs text-ocean-500">
+                  {photoBusy ? "Preparing photos..." : "Large photos are resized before upload so five images can submit cleanly."}
+                </p>
+                {photoMessage && <p className="mt-1 text-xs text-amber-700">{photoMessage}</p>}
+                {photoPreviews.length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {photoPreviews.map((photo, index) => (
+                      <div key={`${photo.name}-${index}`} className="rounded-lg border border-ocean-100 bg-ocean-50 overflow-hidden">
+                        <img src={photo.url} alt="" className="aspect-square w-full object-cover" />
+                        <div className="px-2 py-1.5 text-[11px] text-ocean-600">
+                          <div className="truncate" title={photo.name}>{photo.name}</div>
+                          <div>{formatPhotoSize(photo.size)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {err && <p className="text-red-600 text-sm">{err}</p>}
-              <button disabled={busy} className="btn-primary w-full sm:w-auto">
-                {busy ? "Sending…" : "Submit review"}
+              <button disabled={busy || photoBusy} className="btn-primary w-full sm:w-auto">
+                {busy ? "Sending…" : photoBusy ? "Preparing photos..." : "Submit review"}
               </button>
             </form>
           )}

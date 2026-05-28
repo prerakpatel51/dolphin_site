@@ -504,6 +504,26 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(blocked.status_code, 403)
         self.assertEqual(allowed.status_code, 200, allowed.content)
 
+    def test_cookie_authenticated_logout_requires_csrf_and_clears_session(self):
+        client = Client(enforce_csrf_checks=True)
+        login = client.post(
+            "/api/auth/login/",
+            data=json.dumps({"email": TEST_USER_EMAIL, "password": "StrongPass123"}),
+            content_type="application/json",
+        )
+        self.assertEqual(login.status_code, 200, login.content)
+        self.assertIn("csrftoken", client.cookies)
+
+        blocked = client.post("/api/auth/logout/")
+        allowed = client.post(
+            "/api/auth/logout/",
+            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
+        )
+
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(allowed.status_code, 204, allowed.content)
+        self.assertEqual(client.get("/api/auth/me/").status_code, 401)
+
     def test_signup_login_me_update_and_delete_account(self):
         signup = self.post_json("/api/auth/signup/", {
             "email": "new@example.com",

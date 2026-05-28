@@ -1,21 +1,15 @@
 const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 export async function clearTokens() {
-  await fetch(`${BASE}/auth/logout/`, { method: "POST", credentials: "include" }).catch(() => {});
-}
-
-function errorMessage(err) {
-  if (err.detail) return err.detail;
-  if (typeof err === "string") return err;
-  if (err && typeof err === "object") {
-    return Object.entries(err)
-      .map(([field, messages]) => {
-        const text = Array.isArray(messages) ? messages.join(" ") : String(messages);
-        return `${field.replaceAll("_", " ")}: ${text}`;
-      })
-      .join(" ");
+  const r = await fetch(`${BASE}/auth/logout/`, {
+    method: "POST",
+    credentials: "include",
+    headers: csrfHeaders("POST"),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(errorMessage(err));
   }
-  return "Request failed";
 }
 
 async function refreshAuth() {
@@ -37,6 +31,20 @@ function csrfHeaders(method = "POST") {
   if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(method.toUpperCase())) return {};
   const token = decodeURIComponent(cookieValue("csrftoken"));
   return token ? { "X-CSRFToken": token } : {};
+}
+
+function errorMessage(err) {
+  if (err.detail) return err.detail;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    return Object.entries(err)
+      .map(([field, messages]) => {
+        const text = Array.isArray(messages) ? messages.join(" ") : String(messages);
+        return `${field.replaceAll("_", " ")}: ${text}`;
+      })
+      .join(" ");
+  }
+  return "Request failed";
 }
 
 async function request(path, { method = "GET", body, auth = true, optionalAuth = false, retry = true } = {}) {

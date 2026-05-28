@@ -1,6 +1,7 @@
 import os
 import secrets
 import sys
+import dj_database_url
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -79,23 +80,10 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = "dolphin.wsgi.application"
 
-db_url = os.getenv("TEST_DATABASE_URL" if IS_TESTING else "DATABASE_URL", "")
-if db_url.startswith("postgres"):
-    import re
-    m = re.match(r"postgres(?:ql)?://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(.+)", db_url)
-    DATABASES = {"default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "USER": m.group(1), "PASSWORD": m.group(2),
-        "HOST": m.group(3), "PORT": m.group(4) or "5432",
-        "NAME": m.group(5),
-    }}
-else:
-    if not (DEBUG or IS_TESTING):
-        raise ImproperlyConfigured("DATABASE_URL must point to PostgreSQL when DJANGO_DEBUG=0.")
-    DATABASES = {"default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }}
+db_url = os.getenv("DATABASE_URL")
+DATABASES = {
+    'default': dj_database_url.config(default=db_url, conn_max_age=600)
+}
 
 AUTH_USER_MODEL = "api.User"
 
@@ -207,6 +195,8 @@ PENDING_BOOKING_EXPIRY_MINUTES = int(os.getenv("PENDING_BOOKING_EXPIRY_MINUTES",
 PENDING_BOOKING_EXPIRY_CHECK_SECONDS = int(os.getenv("PENDING_BOOKING_EXPIRY_CHECK_SECONDS", "30"))
 SITE_CACHE_SECONDS = int(os.getenv("SITE_CACHE_SECONDS", "300"))
 REVIEW_STATS_CACHE_SECONDS = int(os.getenv("REVIEW_STATS_CACHE_SECONDS", "300"))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(50 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(5 * 1024 * 1024)))
 
 SQUARE_ENV = os.getenv("SQUARE_ENV", "sandbox")
 SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")

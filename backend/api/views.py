@@ -7,7 +7,7 @@ from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, S
 from django.db.models.functions import Coalesce
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
-from rest_framework import viewsets, mixins
+from rest_framework import viewsets, mixins, exceptions
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -72,7 +72,6 @@ def clear_auth_cookies(response):
             name,
             path="/api/",
             samesite=settings.JWT_COOKIE_SAMESITE,
-            secure=settings.JWT_COOKIE_SECURE,
         )
     return response
 
@@ -168,6 +167,14 @@ class RefreshView(APIView):
 
 class LogoutView(APIView):
     permission_classes = [AllowAny]
+
+    def perform_authentication(self, request):
+        try:
+            return super().perform_authentication(request)
+        except exceptions.AuthenticationFailed:
+            # Token is invalid or expired, but we still want to allow logout
+            # to clear the cookies.
+            pass
 
     def post(self, request):
         return clear_auth_cookies(Response(status=204))

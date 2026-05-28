@@ -22,8 +22,17 @@ export function AuthProvider({ children }) {
     await api.signup(data);
     await login(data.email, data.password);
   }
-  async function logout() { await clearTokens(); setUser(null); }
-  async function deleteAccount() { await api.deleteMe(); logout(); }
+  async function logout() {
+    try {
+      await clearTokens();
+    } finally {
+      setUser(null);
+    }
+  }
+  async function deleteAccount() {
+    await api.deleteMe();
+    await logout();
+  }
 
   return (
     <AuthCtx.Provider value={{ user, loading, login, signup, logout, deleteAccount, refresh }}>
