@@ -44,6 +44,25 @@ TOURS = [
         "seo_description": "Book a small-group sunset cruise from Merritt Island near Cocoa Beach. Enjoy Indian River Lagoon views, wildlife, and Space Coast evening skies.",
         "seo_keywords": "Merritt Island sunset cruise, Cocoa Beach sunset boat tour, Space Coast evening cruise, Indian River Lagoon sunset, Cape Canaveral boat tour",
     },
+    {
+        "slug": "rocket-launch-viewing",
+        "name": "Rocket Launch Viewing",
+        "short_description": "Watch Space Coast rocket launches from the water near Cape Canaveral on a small-group boat tour.",
+        "long_description": (
+            "See launch-day views from the Indian River Lagoon with a local captain who knows the Space Coast. "
+            "Rocket launch viewing trips are scheduled around official launch windows and combine open-water "
+            "sightlines, wildlife, and Cape Canaveral stories for a memorable Florida experience."
+        ),
+        "duration_minutes": 120,
+        "price_per_person": 60,
+        "min_party": 3,
+        "max_party": 6,
+        "image_url": "/images/rocket.jpg",
+        "sort_order": 3,
+        "seo_title": "Rocket Launch Viewing Boat Tour | Cape Canaveral",
+        "seo_description": "Book a Space Coast rocket launch viewing boat tour near Cape Canaveral and Cocoa Beach with Dolphin Island Tours.",
+        "seo_keywords": "Cape Canaveral rocket launch boat tour, Space Coast rocket launch viewing, Cocoa Beach launch tour, Merritt Island rocket launch, Kennedy Space Center boat tour",
+    },
 ]
 
 DEFAULT_TIMES = [time(9, 0), time(12, 0), time(15, 0), time(18, 0)]
