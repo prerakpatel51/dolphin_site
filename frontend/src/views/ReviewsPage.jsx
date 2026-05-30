@@ -30,6 +30,7 @@ export default function ReviewsPage() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [sent, setSent] = useState(false);
+  const [pendingSubmission, setPendingSubmission] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const heroImage = imageFrom(site, "hero", "/images/hero-ocean.jpg");
@@ -58,11 +59,10 @@ export default function ReviewsPage() {
         .forEach(b => unique.set(b.slot.tour.slug, b.slot.tour));
       const slugs = [...unique.keys()];
       setReviewableTours([...unique.values()]);
-      setSelectedReviewTour(current => slugs.includes(current) ? current : slugs[0] || "");
+      setSelectedReviewTour(current => current || slugs[0] || "");
     }).catch(() => {
       if (alive) {
         setReviewableTours([]);
-        setSelectedReviewTour("");
       }
     });
     return () => { alive = false; };
@@ -85,6 +85,11 @@ export default function ReviewsPage() {
       setSelectedReviewTour(requestedTour);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user || selectedReviewTour || tours.length === 0) return;
+    setSelectedReviewTour(tours[0].slug || "");
+  }, [selectedReviewTour, tours, user]);
 
   useEffect(() => {
     let alive = true;
@@ -115,6 +120,7 @@ export default function ReviewsPage() {
   const breakdown = stats.breakdown || {};
   const visibleReviews = reviews.slice(0, visibleCount);
   const paidTourSlugs = new Set(reviewableTours.map(tour => tour.slug));
+  const selectedIsVerified = paidTourSlugs.has(selectedReviewTour);
 
   async function submit(e) {
     e.preventDefault();
@@ -138,6 +144,7 @@ export default function ReviewsPage() {
       photos.forEach(photo => payload.append("photos", photo));
       const res = await api.submitReview(payload);
       setSent(true);
+      setPendingSubmission(Boolean(res?.pending_moderation));
       setPhotos([]);
       setForm(f => ({ ...f, title: "", body: "", rating: 5 }));
       if (res?.review && !res.pending_moderation && (!tourFilter || res.review.tour_slug === tourFilter)) {
@@ -284,28 +291,24 @@ export default function ReviewsPage() {
             <div className="card p-8 sm:p-12 text-center bg-ocean-50 border-ocean-200">
               <h2 className="text-3xl font-display mb-4">Log in to write a review.</h2>
               <p className="text-ocean-700 text-lg max-w-2xl mx-auto mb-5">
-                Reviews can only be written by guests who are logged in and have a paid booking for the tour.
+                Reviews can only be written by logged-in guests. Reviews without a matching booking appear after admin approval.
               </p>
               <Link to="/login?next=/reviews#write-review" className="btn-primary">Log in to review</Link>
-            </div>
-          ) : reviewableTours.length === 0 ? (
-            <div className="card p-8 sm:p-12 text-center bg-ocean-50 border-ocean-200">
-              <h2 className="text-3xl font-display mb-4">Reviews are for verified guests.</h2>
-              <p className="text-ocean-700 text-lg max-w-2xl mx-auto mb-5">
-                After you book a tour, your paid trip will appear here and your review will show the Verified Guest tag.
-              </p>
-              <Link to="/bookings" className="btn-ghost">View my bookings</Link>
             </div>
           ) : tourOptions.length > 0 ? (
             <div className="card p-5 sm:p-8">
               <h2 className="text-3xl font-display mb-2">Leave a review</h2>
               <p className="text-ocean-700 text-sm mb-5">
-                Choose one of your paid trips. Your review will be marked Verified Guest.
+                Logged-in guests can review any tour. Reviews tied to a paid booking publish with the Verified Guest tag; other reviews appear after admin approval.
               </p>
               {sent ? (
                 <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-emerald-900">
                   <p className="font-semibold">Thanks for the review!</p>
-                  <p className="text-sm mt-1">It is live with the Verified Guest tag.</p>
+                  <p className="text-sm mt-1">
+                    {pendingSubmission
+                      ? "It will appear publicly after admin approval."
+                      : "It is live with the Verified Guest tag."}
+                  </p>
                 </div>
               ) : null}
               <form onSubmit={submit} className="space-y-4">
@@ -322,14 +325,17 @@ export default function ReviewsPage() {
                     }}
                   >
                     <option value="">Choose a tour</option>
-                    {reviewableTours.map(tour => (
+                    {tourOptions.map(tour => (
                       <option key={tour.slug} value={tour.slug}>
-                        {tour.name} - verified booking
+                        {tour.name}{paidTourSlugs.has(tour.slug) ? " - verified booking" : ""}
                       </option>
                     ))}
                   </select>
-                  {selectedReviewTour && paidTourSlugs.has(selectedReviewTour) && (
+                  {selectedReviewTour && selectedIsVerified && (
                     <p className="text-xs text-emerald-700 mt-1">This matches one of your paid bookings.</p>
+                  )}
+                  {selectedReviewTour && !selectedIsVerified && (
+                    <p className="text-xs text-ocean-600 mt-1">This review will wait for admin approval before it appears publicly.</p>
                   )}
                 </div>
                 <div>

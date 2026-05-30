@@ -454,15 +454,13 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gen
             .order_by("-created_at")
             .first()
         )
-        if not verified_booking:
-            return Response({"detail": "You can only review tours from your paid bookings."}, status=403)
         # One review per user+tour
         if user and tour and Review.objects.filter(user=user, tour=tour).exists():
             return Response({"detail": "You already reviewed this tour."}, status=400)
 
         review = ser.save()
         review.user = user
-        review.is_approved = True
+        review.is_approved = bool(verified_booking)
         review.booking = verified_booking
         review.save()
         for index, photo in enumerate(photos):

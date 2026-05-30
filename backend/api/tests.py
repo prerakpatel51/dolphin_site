@@ -1091,7 +1091,7 @@ class ReviewTests(ApiTestCase):
         self.assertTrue(created.json()["review"]["verified_guest"])
         self.assertEqual(created.json()["review"]["reviewer_type"], "verified_guest")
 
-    def test_authenticated_unpaid_user_review_is_rejected(self):
+    def test_authenticated_unbooked_user_review_requires_admin_approval(self):
         token = self.token_for()
         payload = {
             "tour_slug": "wildlife",
@@ -1103,10 +1103,19 @@ class ReviewTests(ApiTestCase):
         }
 
         created = self.post_json("/api/reviews/", payload, token=token)
+        public_list = Client().get("/api/reviews/?tour=wildlife")
+        own_list = self.get_json("/api/reviews/?tour=wildlife", token=token)
 
-        self.assertEqual(created.status_code, 403, created.content)
-        self.assertEqual(created.json()["detail"], "You can only review tours from your paid bookings.")
-        self.assertFalse(Review.objects.exists())
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertTrue(created.json()["pending_moderation"])
+        review = Review.objects.get(user=self.user)
+        self.assertFalse(review.is_approved)
+        self.assertIsNone(review.booking)
+        self.assertFalse(created.json()["review"]["verified_guest"])
+        self.assertEqual(created.json()["review"]["reviewer_type"], "registered_user")
+        self.assertEqual(public_list.json(), [])
+        self.assertEqual(len(own_list.json()), 1)
+        self.assertTrue(own_list.json()[0]["pending"])
 
     def test_review_sort_filter_reply_and_helpful_vote_api(self):
         low = Review.objects.create(

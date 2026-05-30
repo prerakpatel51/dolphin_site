@@ -286,24 +286,22 @@ export default function Reviews({ tourSlug }) {
       ) : !user ? (
         <div className="card p-5 sm:p-8 text-center">
           <h3 className="text-2xl mb-2">Want to leave a review?</h3>
-          <p className="text-ocean-700 mb-4">Log in to share your experience. Verified guests are approved automatically.</p>
+          <p className="text-ocean-700 mb-4">Log in to share your experience. Reviews tied to a paid booking are marked verified.</p>
           <Link to={`/login?next=/tours/${tourSlug}`} className="btn-primary">Log in to review</Link>
         </div>
       ) : checkingBooking ? (
         <div className="card p-5 sm:p-8">
           <h3 className="text-2xl mb-2">Checking your bookings…</h3>
-          <p className="text-ocean-700">Review access is available for guests with a paid booking for this tour.</p>
-        </div>
-      ) : !hasPaidBooking ? (
-        <div className="card p-5 sm:p-8 text-center">
-          <h3 className="text-2xl mb-2">Reviews are for verified guests.</h3>
-          <p className="text-ocean-700 mb-4">After you book and complete this tour, you can share your experience here.</p>
-          <Link to={`/bookings`} className="btn-ghost">View my bookings</Link>
+          <p className="text-ocean-700">Checking whether your review can be marked as a verified guest review.</p>
         </div>
       ) : (
         <div className="card p-5 sm:p-8">
           <h3 className="text-2xl mb-2">Leave a review</h3>
-          <p className="text-ocean-700 text-sm mb-5">Your paid booking verifies this review, so it can appear for future guests.</p>
+          <p className="text-ocean-700 text-sm mb-5">
+            {hasPaidBooking
+              ? "Your paid booking verifies this review, so it can appear for future guests."
+              : "Your review will appear publicly after admin approval."}
+          </p>
           {sent ? (
             <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-emerald-900">
               <p className="font-semibold">Thanks for the review!</p>
