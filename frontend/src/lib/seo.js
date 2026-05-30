@@ -19,7 +19,12 @@ export const homeFaq = [
 export function absoluteUrl(path) {
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
-  return window.location.origin + path;
+  return originUrl() + path;
+}
+
+export function originUrl() {
+  if (typeof window !== "undefined") return window.location.origin;
+  return process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite-production.up.railway.app";
 }
 
 export function localBusinessJsonLd(site, image) {
@@ -34,12 +39,12 @@ export function localBusinessJsonLd(site, image) {
 
   return {
     "@type": ["LocalBusiness", "TravelAgency", "TouristInformationCenter"],
-    "@id": `${window.location.origin}/#business`,
+    "@id": `${originUrl()}/#business`,
     "name": site.site_name,
     "description": site.seo_description,
-    "url": window.location.origin,
+    "url": originUrl(),
     "image": absoluteUrl(image || "/images/hero-ocean.jpg"),
-    "logo": `${window.location.origin}/images/logo.png`,
+    "logo": `${originUrl()}/images/logo.png`,
     "telephone": site.contact_phone || undefined,
     "email": site.contact_email,
     "priceRange": site.price_blurb || "$60 per person",
@@ -64,11 +69,11 @@ export function localBusinessJsonLd(site, image) {
 export function websiteJsonLd(site) {
   return {
     "@type": "WebSite",
-    "@id": `${window.location.origin}/#website`,
-    "url": window.location.origin,
+    "@id": `${originUrl()}/#website`,
+    "url": originUrl(),
     "name": site.site_name,
     "description": site.seo_description,
-    "publisher": { "@id": `${window.location.origin}/#business` },
+    "publisher": { "@id": `${originUrl()}/#business` },
   };
 }
 

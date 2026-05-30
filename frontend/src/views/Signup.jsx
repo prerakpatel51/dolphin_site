@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth.jsx";
@@ -6,7 +8,7 @@ import SEO from "../components/SEO.jsx";
 export default function Signup() {
   const { signup } = useAuth();
   const nav = useNavigate();
-  const [f, setF] = useState({ email: "", password: "", first_name: "", last_name: "", phone: "", accepts_marketing: true });
+  const [f, setF] = useState({ email: "", password: "", password_confirm: "", first_name: "", last_name: "", phone: "", accepts_marketing: true });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -17,12 +19,25 @@ export default function Signup() {
       setErr("First name and last name are required.");
       return;
     }
-    if (!/^\d{10}$/.test(f.phone)) {
-      setErr("Phone number must be exactly 10 digits.");
+    if (!/^\+?\d{10,15}$/.test(f.phone)) {
+      setErr("Phone number must be between 10 and 15 digits.");
+      return;
+    }
+    if (f.password.length < 8 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(f.password)) {
+      setErr("Password must be at least 8 characters and include uppercase, lowercase, and a number.");
+      return;
+    }
+    if (f.password !== f.password_confirm) {
+      setErr("Passwords do not match.");
       return;
     }
     setBusy(true); setErr("");
-    try { await signup(f); nav("/"); }
+    try {
+      const payload = { ...f };
+      delete payload.password_confirm;
+      await signup(payload);
+      nav("/");
+    }
     catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -32,7 +47,7 @@ export default function Signup() {
       <input id={`signup-${k}`} className="input" type={type} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} required={type !== "tel"} /></div>
   );
 
-  const setPhone = (value) => setF({ ...f, phone: value.replace(/\D/g, "").slice(0, 10) });
+  const setPhone = (value) => setF({ ...f, phone: value.replace(/[^\d+]/g, "").slice(0, 16) });
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
@@ -52,17 +67,16 @@ export default function Signup() {
             id="signup-phone"
             className="input"
             type="tel"
-            inputMode="numeric"
-            pattern="[0-9]{10}"
-            maxLength={10}
+            inputMode="tel"
+            maxLength={16}
             value={f.phone}
             onChange={e => setPhone(e.target.value)}
             required
           />
-          <p className="mt-1 text-xs text-ocean-600">Numbers only, exactly 10 digits.</p>
+          <p className="mt-1 text-xs text-ocean-600">Enter a valid phone number (10-15 digits).</p>
         </div>
         <div>
-          <label className="label" htmlFor="signup-password">Password (min 8 chars)</label>
+          <label className="label" htmlFor="signup-password">Password</label>
           <div className="relative">
             <input
               id="signup-password"
@@ -81,6 +95,19 @@ export default function Signup() {
               {showPassword ? "Hide" : "Show"}
             </button>
           </div>
+          <p className="mt-1 text-xs text-ocean-600">Min 8 chars, uppercase, lowercase, and number.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="signup-password-confirm">Confirm Password</label>
+          <input
+            id="signup-password-confirm"
+            className="input"
+            type={showPassword ? "text" : "password"}
+            value={f.password_confirm}
+            onChange={e => setF({ ...f, password_confirm: e.target.value })}
+            minLength={8}
+            required
+          />
         </div>
         <label className="flex items-start gap-3 text-sm text-ocean-800 cursor-pointer select-none pt-1">
           <input type="checkbox" checked={f.accepts_marketing}

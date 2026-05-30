@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SEO from "../components/SEO.jsx";
@@ -83,11 +85,6 @@ export default function ReviewsPage() {
       setSelectedReviewTour(requestedTour);
     }
   }, []);
-
-  useEffect(() => {
-    if (selectedReviewTour || tours.length === 0) return;
-    setSelectedReviewTour(tours[0].slug || "");
-  }, [selectedReviewTour, tours]);
 
   useEffect(() => {
     let alive = true;
@@ -283,16 +280,32 @@ export default function ReviewsPage() {
         )}
 
         <section id="write-review" className="mt-20 scroll-mt-24">
-          {tourOptions.length > 0 ? (
+          {!user ? (
+            <div className="card p-8 sm:p-12 text-center bg-ocean-50 border-ocean-200">
+              <h2 className="text-3xl font-display mb-4">Log in to write a review.</h2>
+              <p className="text-ocean-700 text-lg max-w-2xl mx-auto mb-5">
+                Reviews can only be written by guests who are logged in and have a paid booking for the tour.
+              </p>
+              <Link to="/login?next=/reviews#write-review" className="btn-primary">Log in to review</Link>
+            </div>
+          ) : reviewableTours.length === 0 ? (
+            <div className="card p-8 sm:p-12 text-center bg-ocean-50 border-ocean-200">
+              <h2 className="text-3xl font-display mb-4">Reviews are for verified guests.</h2>
+              <p className="text-ocean-700 text-lg max-w-2xl mx-auto mb-5">
+                After you book a tour, your paid trip will appear here and your review will show the Verified Guest tag.
+              </p>
+              <Link to="/bookings" className="btn-ghost">View my bookings</Link>
+            </div>
+          ) : tourOptions.length > 0 ? (
             <div className="card p-5 sm:p-8">
               <h2 className="text-3xl font-display mb-2">Leave a review</h2>
               <p className="text-ocean-700 text-sm mb-5">
-                Anyone can share feedback. Reviews from paid guests publish right away; all other reviews appear after admin approval.
+                Choose one of your paid trips. Your review will be marked Verified Guest.
               </p>
               {sent ? (
                 <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-emerald-900">
                   <p className="font-semibold">Thanks for the review!</p>
-                  <p className="text-sm mt-1">If you are not a verified paid guest for that tour, it will appear publicly after admin approval.</p>
+                  <p className="text-sm mt-1">It is live with the Verified Guest tag.</p>
                 </div>
               ) : null}
               <form onSubmit={submit} className="space-y-4">
@@ -309,17 +322,14 @@ export default function ReviewsPage() {
                     }}
                   >
                     <option value="">Choose a tour</option>
-                    {tourOptions.map(tour => (
+                    {reviewableTours.map(tour => (
                       <option key={tour.slug} value={tour.slug}>
-                        {tour.name}{paidTourSlugs.has(tour.slug) ? " - verified booking" : ""}
+                        {tour.name} - verified booking
                       </option>
                     ))}
                   </select>
                   {selectedReviewTour && paidTourSlugs.has(selectedReviewTour) && (
-                    <p className="text-xs text-emerald-700 mt-1">This matches one of your paid bookings, so it can publish immediately.</p>
-                  )}
-                  {selectedReviewTour && !paidTourSlugs.has(selectedReviewTour) && (
-                    <p className="text-xs text-ocean-600 mt-1">This review will wait for admin approval before it appears publicly.</p>
+                    <p className="text-xs text-emerald-700 mt-1">This matches one of your paid bookings.</p>
                   )}
                 </div>
                 <div>
@@ -329,7 +339,7 @@ export default function ReviewsPage() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label" htmlFor="review-author-name">Your name *</label>
-                    <input id="review-author-name" className="input" required placeholder={!user ? "Anonymous guest" : ""} value={form.author_name} onChange={e => setForm({ ...form, author_name: e.target.value })} />
+                    <input id="review-author-name" className="input" required value={form.author_name} onChange={e => setForm({ ...form, author_name: e.target.value })} />
                   </div>
                   <div>
                     <label className="label" htmlFor="review-author-email">Email (private)</label>
@@ -382,11 +392,6 @@ export default function ReviewsPage() {
                 <button disabled={busy || photoBusy} className="btn-primary w-full sm:w-auto">
                   {busy ? "Sending..." : photoBusy ? "Preparing photos..." : "Submit review"}
                 </button>
-                {!user && (
-                  <p className="text-xs text-ocean-600">
-                    Not logged in reviews are marked as guest reviews and stay hidden until admin approves them.
-                  </p>
-                )}
               </form>
             </div>
           ) : (

@@ -1,3 +1,5 @@
+"use client";
+
 import SEO from "../components/SEO.jsx";
 import { imageFrom, useSite } from "../lib/site.js";
 import { breadcrumbJsonLd, graphJsonLd, localBusinessJsonLd } from "../lib/seo.js";

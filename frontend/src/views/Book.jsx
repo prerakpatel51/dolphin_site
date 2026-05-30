@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
@@ -11,7 +13,7 @@ export default function Book() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const slotId = params.get("slot");
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const { site } = useSite("tours");
   const nav = useNavigate();
 
@@ -140,6 +142,7 @@ export default function Book() {
     };
   }, [cfg, slot?.id]);
 
+  if (loading) return <div className="p-10">Loading...</div>;
   if (!user) return (
     <div className="max-w-md mx-auto p-10 text-center">
       <SEO

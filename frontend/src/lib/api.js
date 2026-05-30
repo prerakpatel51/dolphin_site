@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE || "/api";
+const BASE = process.env.NEXT_PUBLIC_API_BASE || "/api";
 
 export async function clearTokens() {
   const r = await fetch(`${BASE}/auth/logout/`, {

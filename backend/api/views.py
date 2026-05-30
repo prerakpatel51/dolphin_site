@@ -143,6 +143,8 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        if rate_limited(request, "login", limit=10, window=10 * 60):
+            return Response({"detail": "Too many login attempts. Try again later."}, status=429)
         serializer = TokenObtainPairSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         refresh = RefreshToken(serializer.validated_data["refresh"])
@@ -385,6 +387,11 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
     permission_classes = [AllowAny]
 
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     def get_queryset(self):
         from django.db.models import Q
         slug = self.request.query_params.get("tour")
@@ -439,21 +446,24 @@ class ReviewViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.Gen
                 tour = Tour.objects.get(slug=slug)
             except Tour.DoesNotExist:
                 pass
+        if not tour:
+            return Response({"tour_slug": "Choose a valid tour to review."}, status=400)
         user = request.user if request.user.is_authenticated else None
+        verified_booking = (
+            Booking.objects.filter(user=user, slot__tour=tour, status="paid")
+            .order_by("-created_at")
+            .first()
+        )
+        if not verified_booking:
+            return Response({"detail": "You can only review tours from your paid bookings."}, status=403)
         # One review per user+tour
         if user and tour and Review.objects.filter(user=user, tour=tour).exists():
             return Response({"detail": "You already reviewed this tour."}, status=400)
-        # Optional: also dedupe anonymous submissions by email + tour
-        if not user and tour and ser.validated_data.get("author_email"):
-            if Review.objects.filter(tour=tour, author_email__iexact=ser.validated_data["author_email"]).exists():
-                return Response({"detail": "A review from this email already exists for this tour."}, status=400)
 
         review = ser.save()
         review.user = user
-        # Auto-approve if user has a paid booking for this tour
-        if user and tour and Booking.objects.filter(user=user, slot__tour=tour, status="paid").exists():
-            review.is_approved = True
-            review.booking = Booking.objects.filter(user=user, slot__tour=tour, status="paid").order_by("-created_at").first()
+        review.is_approved = True
+        review.booking = verified_booking
         review.save()
         for index, photo in enumerate(photos):
             ReviewPhoto.objects.create(review=review, image=photo, sort_order=index)

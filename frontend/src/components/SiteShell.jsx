@@ -1,59 +1,27 @@
-import { Routes, Route, Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Suspense, lazy, useEffect, useState } from "react";
-import { useAuth } from "./lib/auth.jsx";
-import { imageFrom, useSite } from "./lib/site.js";
-import { initMarketingTags, trackPageView } from "./lib/tracking.js";
-import PageSections from "./components/PageSections.jsx";
+"use client";
 
-const routeLoaders = {
-  home: () => import("./views/Home.jsx"),
-  tours: () => import("./views/Tours.jsx"),
-  tourDetail: () => import("./views/TourDetail.jsx"),
-  book: () => import("./views/Book.jsx"),
-  login: () => import("./views/Login.jsx"),
-  signup: () => import("./views/Signup.jsx"),
-  account: () => import("./views/Account.jsx"),
-  bookings: () => import("./views/MyBookings.jsx"),
-  about: () => import("./views/About.jsx"),
-  contact: () => import("./views/Contact.jsx"),
-  reviews: () => import("./views/ReviewsPage.jsx"),
-  forgotPassword: () => import("./views/ForgotPassword.jsx"),
-  resetPassword: () => import("./views/ResetPassword.jsx"),
-  notFound: () => import("./views/NotFound.jsx"),
-};
+import { usePathname } from "next/navigation";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useAuth } from "../lib/auth.jsx";
+import { imageFrom, useSite, pageKeyFromPath } from "../lib/site.js";
+import { initMarketingTags, trackPageView } from "../lib/tracking.js";
+import PageSections from "./PageSections.jsx";
 
-const Home = lazy(routeLoaders.home);
-const Tours = lazy(routeLoaders.tours);
-const TourDetail = lazy(routeLoaders.tourDetail);
-const Book = lazy(routeLoaders.book);
-const Login = lazy(routeLoaders.login);
-const Signup = lazy(routeLoaders.signup);
-const Account = lazy(routeLoaders.account);
-const MyBookings = lazy(routeLoaders.bookings);
-const About = lazy(routeLoaders.about);
-const Contact = lazy(routeLoaders.contact);
-const ReviewsPage = lazy(routeLoaders.reviews);
-const ForgotPassword = lazy(routeLoaders.forgotPassword);
-const ResetPassword = lazy(routeLoaders.resetPassword);
-const NotFound = lazy(routeLoaders.notFound);
-
-function preloadRoute(key) {
-  routeLoaders[key]?.();
-}
-
-export default function App() {
+export default function SiteShell({ children }) {
   const { user, logout } = useAuth();
   const { site } = useSite("home");
   const nav = useNavigate();
-  const location = useLocation();
-  const { page: currentPage } = useSite(pageKeyFromPath(location.pathname));
+  const pathname = usePathname() || "/";
+  const { page: currentPage } = useSite(pageKeyFromPath(pathname));
   const logo = imageFrom(site, "logo", "/images/logo.png");
   const [open, setOpen] = useState(false);
+
   useEffect(() => { initMarketingTags(site); }, [site]);
   useEffect(() => {
-    trackPageView(site, `${location.pathname}${location.search}`);
-  }, [site, location.pathname, location.search]);
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+    trackPageView(site, `${pathname}${window.location.search}`);
+  }, [site, pathname]);
+  useEffect(() => { setOpen(false); }, [pathname]);
 
   async function handleLogout() {
     try {
@@ -73,20 +41,20 @@ export default function App() {
             <span className="hidden sm:block font-display text-base sm:text-lg text-ocean-800 truncate">{site.site_name}</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1 lg:gap-3 text-sm">
-            <NavItem to="/tours" preloadKey="tours">Tours</NavItem>
-            <NavItem to="/reviews" preloadKey="reviews">Reviews</NavItem>
-            <NavItem to="/about" preloadKey="about">About</NavItem>
-            <NavItem to="/contact" preloadKey="contact">Contact</NavItem>
+            <NavItem to="/tours">Tours</NavItem>
+            <NavItem to="/reviews">Reviews</NavItem>
+            <NavItem to="/about">About</NavItem>
+            <NavItem to="/contact">Contact</NavItem>
             {user ? (
               <>
-                <NavItem to="/bookings" preloadKey="bookings">My Bookings</NavItem>
-                <NavItem to="/account" preloadKey="account">Account</NavItem>
+                <NavItem to="/bookings">My Bookings</NavItem>
+                <NavItem to="/account">Account</NavItem>
                 <button onClick={handleLogout} className="text-ocean-700 hover:text-ocean-900 px-2">Logout</button>
               </>
             ) : (
               <>
-                <NavItem to="/login" preloadKey="login">Login</NavItem>
-                <Link to="/signup" onMouseEnter={() => preloadRoute("signup")} onFocus={() => preloadRoute("signup")} className="btn-primary !py-2 !px-4 text-sm">Sign up</Link>
+                <NavItem to="/login">Login</NavItem>
+                <Link to="/signup" className="btn-primary !py-2 !px-4 text-sm">Sign up</Link>
               </>
             )}
           </nav>
@@ -102,14 +70,14 @@ export default function App() {
         {open && (
           <div className="md:hidden border-t border-ocean-100 bg-white shadow-2xl shadow-ocean-950/10">
             <nav className="px-4 py-4 flex flex-col gap-1 text-base">
-              <MItem to="/tours" preloadKey="tours" onClick={() => setOpen(false)}>Tours</MItem>
-              <MItem to="/reviews" preloadKey="reviews" onClick={() => setOpen(false)}>Reviews</MItem>
-              <MItem to="/about" preloadKey="about" onClick={() => setOpen(false)}>About</MItem>
-              <MItem to="/contact" preloadKey="contact" onClick={() => setOpen(false)}>Contact</MItem>
+              <MItem to="/tours" onClick={() => setOpen(false)}>Tours</MItem>
+              <MItem to="/reviews" onClick={() => setOpen(false)}>Reviews</MItem>
+              <MItem to="/about" onClick={() => setOpen(false)}>About</MItem>
+              <MItem to="/contact" onClick={() => setOpen(false)}>Contact</MItem>
               {user ? (
                 <>
-                  <MItem to="/bookings" preloadKey="bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
-                  <MItem to="/account" preloadKey="account" onClick={() => setOpen(false)}>Account</MItem>
+                  <MItem to="/bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
+                  <MItem to="/account" onClick={() => setOpen(false)}>Account</MItem>
                   <button onClick={async () => {
                     setOpen(false);
                     await handleLogout();
@@ -118,8 +86,8 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <MItem to="/login" preloadKey="login" onClick={() => setOpen(false)}>Login</MItem>
-                  <Link to="/signup" onMouseEnter={() => preloadRoute("signup")} onFocus={() => preloadRoute("signup")} onClick={() => setOpen(false)} className="btn-primary mt-2 text-base">Sign up</Link>
+                  <MItem to="/login" onClick={() => setOpen(false)}>Login</MItem>
+                  <Link to="/signup" onClick={() => setOpen(false)} className="btn-primary mt-2 text-base">Sign up</Link>
                 </>
               )}
             </nav>
@@ -129,24 +97,7 @@ export default function App() {
 
       <main className="flex-1">
         <PageSections sections={currentPage.sections || []} />
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/tours" element={<Tours />} />
-            <Route path="/reviews" element={<ReviewsPage />} />
-            <Route path="/tours/:slug" element={<TourDetail />} />
-            <Route path="/book/:slug" element={<Book />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/account" element={<Account />} />
-            <Route path="/bookings" element={<MyBookings />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        {children}
       </main>
 
       <footer className="bg-ocean-950 text-ocean-100 mt-16 sm:mt-20">
@@ -216,42 +167,17 @@ function TikTokIcon() {
   );
 }
 
-function pageKeyFromPath(pathname) {
-  if (pathname === "/") return "home";
-  if (pathname.startsWith("/book")) return "book";
-  if (pathname.startsWith("/tours")) return "tours";
-  if (pathname.startsWith("/reviews")) return "reviews";
-  if (pathname.startsWith("/about")) return "about";
-  if (pathname.startsWith("/contact")) return "contact";
-  if (pathname.startsWith("/login")) return "login";
-  if (pathname.startsWith("/signup")) return "signup";
-  if (pathname.startsWith("/account")) return "account";
-  if (pathname.startsWith("/bookings")) return "bookings";
-  if (pathname.startsWith("/forgot-password")) return "forgot_password";
-  if (pathname.startsWith("/reset-password")) return "reset_password";
-  return "";
-}
-
-function RouteFallback() {
+function NavItem({ to, children }) {
   return (
-    <div className="max-w-6xl mx-auto px-4 py-16">
-      <div className="h-3 w-36 rounded-full bg-ocean-100 animate-pulse" />
-      <div className="mt-4 h-10 w-full max-w-md rounded-xl bg-white border border-ocean-100 animate-pulse" />
-    </div>
-  );
-}
-
-function NavItem({ to, children, preloadKey }) {
-  return (
-    <NavLink to={to} onMouseEnter={() => preloadRoute(preloadKey)} onFocus={() => preloadRoute(preloadKey)} className={({ isActive }) =>
+    <NavLink to={to} className={({ isActive }) =>
       `px-3 py-2 rounded-full transition-colors ${isActive ? "bg-ocean-100 text-ocean-900" : "text-ocean-700 hover:text-ocean-900"}`
     }>{children}</NavLink>
   );
 }
 
-function MItem({ to, children, onClick, preloadKey }) {
+function MItem({ to, children, onClick }) {
   return (
-    <NavLink to={to} onMouseEnter={() => preloadRoute(preloadKey)} onFocus={() => preloadRoute(preloadKey)} onClick={onClick} className={({ isActive }) =>
+    <NavLink to={to} onClick={onClick} className={({ isActive }) =>
       `px-4 py-3 rounded-xl transition-colors ${isActive ? "bg-ocean-100 text-ocean-900 font-semibold" : "text-ocean-800 hover:bg-ocean-50"}`
     }>{children}</NavLink>
   );

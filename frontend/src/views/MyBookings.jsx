@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams, Link, Navigate } from "react-router-dom";
 import { api } from "../lib/api.js";
@@ -118,13 +120,14 @@ function statusClass(status) {
 }
 
 export default function MyBookings() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
   const [list, setList] = useState([]);
   const [params] = useSearchParams();
   const justId = params.get("just");
   useEffect(() => { if (user) api.myBookings().then(d => setList(d.results || d)); }, [user]);
 
+  if (loading) return <div className="p-10">Loading...</div>;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`} replace />;
   return (
     <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">

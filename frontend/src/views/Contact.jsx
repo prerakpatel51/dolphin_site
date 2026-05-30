@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import { api } from "../lib/api.js";
 import { useSite } from "../lib/site.js";

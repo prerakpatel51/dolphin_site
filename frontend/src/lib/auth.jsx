@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { api, clearTokens } from "./api.js";
 
 const AuthCtx = createContext(null);
@@ -6,10 +6,18 @@ const AuthCtx = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const refreshSeq = useRef(0);
 
   async function refresh() {
-    try { setUser(await api.me()); } catch { setUser(null); }
-    finally { setLoading(false); }
+    const seq = ++refreshSeq.current;
+    try {
+      const nextUser = await api.me();
+      if (seq === refreshSeq.current) setUser(nextUser);
+    } catch {
+      if (seq === refreshSeq.current) setUser(null);
+    } finally {
+      if (seq === refreshSeq.current) setLoading(false);
+    }
   }
 
   useEffect(() => { refresh(); }, []);
@@ -20,13 +28,21 @@ export function AuthProvider({ children }) {
   }
   async function signup(data) {
     await api.signup(data);
-    await login(data.email, data.password);
+    try {
+      await login(data.email, data.password);
+    } catch (err) {
+      console.error("Auto-login after signup failed", err);
+    }
   }
   async function logout() {
+    const seq = ++refreshSeq.current;
     try {
       await clearTokens();
     } finally {
-      setUser(null);
+      if (seq === refreshSeq.current) {
+        setUser(null);
+        setLoading(false);
+      }
     }
   }
   async function deleteAccount() {

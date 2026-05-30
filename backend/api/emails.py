@@ -65,7 +65,7 @@ def _send_via_smtp(to, subject, html, headers=None):
     msg.set_content("This email requires an HTML-capable client.")
     msg.add_alternative(html, subtype="html")
     ctx = ssl.create_default_context()
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as s:
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT) as s:
         s.ehlo()
         s.starttls(context=ctx)
         s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)

@@ -1,15 +1,17 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useSite } from "../lib/site.js";
-import { absoluteUrl, breadcrumbJsonLd, graphJsonLd, localBusinessJsonLd } from "../lib/seo.js";
+import { absoluteUrl, breadcrumbJsonLd, graphJsonLd, localBusinessJsonLd, originUrl } from "../lib/seo.js";
 import Calendar from "../components/Calendar.jsx";
 import SEO from "../components/SEO.jsx";
 
-export default function TourDetail() {
+export default function TourDetail({ initialTour = null, initialDates = {} }) {
   const { slug } = useParams();
-  const [tour, setTour] = useState(null);
-  const [dates, setDates] = useState({});
+  const [tour, setTour] = useState(initialTour);
+  const [dates, setDates] = useState(initialDates);
   const [selected, setSelected] = useState(null);
   const [selectedSlotId, setSelectedSlotId] = useState("");
   const [partySize, setPartySize] = useState(3);
@@ -17,11 +19,20 @@ export default function TourDetail() {
   const [formError, setFormError] = useState("");
   const { site } = useSite("tours");
   const nav = useNavigate();
-  const [loadState, setLoadState] = useState("loading");
+  const [loadState, setLoadState] = useState(initialTour ? "ready" : "loading");
 
   useEffect(() => {
     let alive = true;
-    setLoadState("loading");
+    const hasInitialTour = initialTour?.slug === slug;
+    if (hasInitialTour) {
+      setTour(initialTour);
+      setDates(initialDates);
+      setLoadState("ready");
+    } else {
+      setTour(null);
+      setDates({});
+      setLoadState("loading");
+    }
     Promise.allSettled([
       api.tour(slug),
       api.tourDates(slug),
@@ -30,7 +41,7 @@ export default function TourDetail() {
       if (tourResult.status === "fulfilled") {
         setTour(tourResult.value);
         setLoadState("ready");
-      } else {
+      } else if (!hasInitialTour) {
         setTour(null);
         setLoadState("not-found");
       }
@@ -40,7 +51,7 @@ export default function TourDetail() {
     setSelectedSlotId("");
     setFormError("");
     return () => { alive = false; };
-  }, [slug]);
+  }, [slug, initialTour, initialDates]);
 
   if (loadState === "not-found") return (
     <div className="max-w-3xl mx-auto px-4 py-16 text-center">
@@ -120,19 +131,19 @@ export default function TourDetail() {
           ]),
           {
             "@type": ["TouristTrip", "Service"],
-            "@id": `${window.location.origin}/tours/${tour.slug}#tour`,
+            "@id": `${originUrl()}/tours/${tour.slug}#tour`,
             "name": tour.name,
             "description": tour.long_description || tour.short_description,
             "image": absoluteUrl(tour.og_image_url || tour.image_url),
-            "url": `${window.location.origin}/tours/${tour.slug}`,
-            "provider": { "@id": `${window.location.origin}/#business` },
+            "url": `${originUrl()}/tours/${tour.slug}`,
+            "provider": { "@id": `${originUrl()}/#business` },
             "areaServed": ["Merritt Island", "Cocoa Beach", "Cape Canaveral", "Indian River Lagoon", "Florida Space Coast"],
             "offers": {
               "@type": "Offer",
               "price": String(tour.price_per_person),
               "priceCurrency": "USD",
               "availability": "https://schema.org/InStock",
-              "url": `${window.location.origin}/tours/${tour.slug}`,
+              "url": `${originUrl()}/tours/${tour.slug}`,
             },
           },
         ])}

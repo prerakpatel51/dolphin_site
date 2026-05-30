@@ -1,8 +1,10 @@
+"use client";
+
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { imageFrom, useSite } from "../lib/site.js";
-import { breadcrumbJsonLd, faqJsonLd, graphJsonLd, homeFaq, localBusinessJsonLd, websiteJsonLd } from "../lib/seo.js";
+import { imageFrom, primeSite, useSite } from "../lib/site.js";
+import { breadcrumbJsonLd, faqJsonLd, graphJsonLd, homeFaq, localBusinessJsonLd, originUrl, websiteJsonLd } from "../lib/seo.js";
 import SEO from "../components/SEO.jsx";
 import { Stars } from "../components/Stars.jsx";
 
@@ -21,12 +23,13 @@ const FAQ = [
   ["Where do we meet?", "2700 Harbortown Drive, Merritt Island, FL. Arrive 15 minutes before departure."],
 ];
 
-export default function Home() {
-  const [tours, setTours] = useState([]);
-  const [homeReviews, setHomeReviews] = useState([]);
+export default function Home({ initialSite, initialTours = [], initialFeaturedReviews = [], initialBackupReviews = [], initialReviewStats }) {
+  primeSite(initialSite);
+  const [tours, setTours] = useState(initialTours);
+  const [homeReviews, setHomeReviews] = useState(prioritizeHomeReviews(initialFeaturedReviews, initialBackupReviews));
   const [reviewTourFilter, setReviewTourFilter] = useState("");
   const [mobileReviewIndex, setMobileReviewIndex] = useState(0);
-  const [reviewStats, setReviewStats] = useState({ count: 0, average: 0 });
+  const [reviewStats, setReviewStats] = useState(initialReviewStats || { count: 0, average: 0 });
   const { site, page } = useSite("home");
   useEffect(() => {
     let alive = true;
@@ -101,7 +104,7 @@ export default function Home() {
             "itemListElement": tours.map((tour, index) => ({
               "@type": "ListItem",
               "position": index + 1,
-              "url": `${window.location.origin}/tours/${tour.slug}`,
+              "url": `${originUrl()}/tours/${tour.slug}`,
               "name": tour.name,
             })),
           },
@@ -119,7 +122,7 @@ export default function Home() {
             <span className="w-1.5 h-1.5 rounded-full bg-sand-200 animate-pulse" />
             {page.hero_eyebrow}
           </div>
-          <h1 className="mt-5 sm:mt-6 text-[2.65rem] sm:text-6xl lg:text-8xl font-display max-w-4xl leading-[1.02]">
+          <h1 className="mt-5 sm:mt-6 text-[2.65rem] sm:text-5xl lg:text-7xl font-display max-w-4xl leading-[1.03]">
             {page.hero_title}
           </h1>
           <p className="mt-5 sm:mt-7 text-base sm:text-xl text-ocean-100 max-w-2xl leading-relaxed">

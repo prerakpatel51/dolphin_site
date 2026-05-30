@@ -4,7 +4,10 @@
 
 @layer base {
   h1, h2, h3 { @apply font-display tracking-tight; }
-  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  html { font-size: 15px; -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (max-width: 767px) {
+    html { font-size: 16px; }
+  }
   body { @apply text-base overflow-x-hidden bg-ocean-50 text-ocean-950 antialiased; }
   img { max-width: 100%; height: auto; }
   *, ::before, ::after { min-width: 0; }

@@ -1,9 +1,11 @@
 import time
+from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
+from django.utils import timezone
 
 from api.email_queue import process_email_recipient, update_job_after_batch
 from api.models import EmailDeliveryJob, EmailDeliveryRecipient
@@ -17,11 +19,15 @@ class Command(BaseCommand):
         parser.add_argument("--sleep", type=float, default=5.0, help="Seconds to wait between polling attempts.")
         parser.add_argument("--batch-size", type=int, default=25, help="Maximum recipients to send per polling cycle.")
         parser.add_argument("--workers", type=int, default=0, help="Parallel email sends per polling cycle. 0 chooses a database-safe default.")
+        parser.add_argument("--stale-minutes", type=int, default=10, help="Retry recipients stuck in sending longer than this many minutes.")
+        parser.add_argument("--max-attempts", type=int, default=3, help="Mark recipients failed after this many interrupted/failed attempts.")
 
     def handle(self, *args, **options):
         once = options["once"]
         sleep = options["sleep"]
         batch_size = options["batch_size"]
+        stale_minutes = options["stale_minutes"]
+        max_attempts = options["max_attempts"]
         if options["workers"]:
             workers = max(1, options["workers"])
         elif getattr(settings, "IS_TESTING", False):
@@ -30,6 +36,7 @@ class Command(BaseCommand):
             workers = 1 if connection.vendor == "sqlite" else 4
 
         while True:
+            self.recover_stale_sending(stale_minutes, max_attempts)
             processed = self.process_batch(batch_size, workers)
             if once:
                 break
@@ -79,3 +86,17 @@ class Command(BaseCommand):
         if processed:
             self.stdout.write(f"Processed {processed} queued email recipient(s).")
         return processed
+
+    def recover_stale_sending(self, stale_minutes, max_attempts):
+        cutoff = timezone.now() - timedelta(minutes=stale_minutes)
+        stale = EmailDeliveryRecipient.objects.filter(status="sending", created_at__lt=cutoff)
+        job_ids = list(stale.values_list("job_id", flat=True).distinct())
+        failed = stale.filter(attempts__gte=max_attempts).update(
+            status="failed",
+            last_error="Email delivery interrupted while sending.",
+        )
+        retried = stale.filter(attempts__lt=max_attempts).update(status="pending")
+        if failed or retried:
+            for job in EmailDeliveryJob.objects.filter(id__in=job_ids):
+                update_job_after_batch(job)
+            self.stdout.write(f"Recovered {retried} stale sending recipient(s); marked {failed} failed.")

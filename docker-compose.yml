@@ -9,6 +9,11 @@ services:
   backend:
     build: ./backend
     env_file: ./backend/.env
+    environment:
+      DJANGO_SECRET_KEY: local-compose-development-secret
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,testserver
+      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URLS: http://localhost:3000,http://frontend:3000
     depends_on: [db]
     user: root
     volumes:
@@ -24,6 +29,11 @@ services:
   email_worker:
     build: ./backend
     env_file: ./backend/.env
+    environment:
+      DJANGO_SECRET_KEY: local-compose-development-secret
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,testserver
+      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URLS: http://localhost:3000,http://frontend:3000
     depends_on: [db, backend]
     user: root
     volumes:
@@ -36,10 +46,23 @@ services:
              python manage.py process_email_queue --sleep 5 --batch-size 100 --workers 5'"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        BACKEND_UPSTREAM: backend:8000
+        INTERNAL_API_BASE: http://backend:8000/api
+        INTERNAL_API_ORIGIN: http://backend:8000
+        NEXT_PUBLIC_API_BASE: /api
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
     depends_on: [backend]
     ports:
-      - "80:80"
+      - "3000:3000"
+    environment:
+      BACKEND_UPSTREAM: backend:8000
+      INTERNAL_API_BASE: http://backend:8000/api
+      INTERNAL_API_ORIGIN: http://backend:8000
+      NEXT_PUBLIC_API_BASE: /api
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
     volumes:
       - media:/app/media:ro
       - static:/app/staticfiles:ro
@@ -50,10 +73,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.e2e
-    depends_on: [backend]
+    depends_on: [frontend]
     environment:
       CI: "1"
-    command: npm run test:e2e
+      PLAYWRIGHT_BASE_URL: http://frontend:3000
+      E2E_ADMIN_EMAIL: admin@example.com
+      E2E_ADMIN_PASSWORD: StrongPass123!
+    command: npx playwright test tests/e2e/full-stack.spec.js
 
 volumes:
   dbdata:

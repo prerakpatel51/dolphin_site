@@ -1027,7 +1027,7 @@ class BookingAndPromoTests(ApiTestCase):
 
 
 class ReviewTests(ApiTestCase):
-    def test_anonymous_reviews_are_pending_hidden_until_approved_and_deduped_by_email(self):
+    def test_anonymous_review_submission_is_rejected(self):
         payload = {
             "tour_slug": "wildlife",
             "author_name": "Visitor",
@@ -1038,27 +1038,13 @@ class ReviewTests(ApiTestCase):
         }
 
         created = self.post_json("/api/reviews/", payload)
-        duplicate = self.post_json("/api/reviews/", payload)
-        list_before = self.client.get("/api/reviews/?tour=wildlife")
-        review = Review.objects.get(author_email="visitor@example.com")
-        review.is_approved = True
-        review.save(update_fields=["is_approved"])
-        list_after = self.client.get("/api/reviews/?tour=wildlife")
-        stats = self.client.get("/api/tours/wildlife/reviews/stats/")
-        all_stats = self.client.get("/api/reviews/stats/")
 
-        self.assertEqual(created.status_code, 201)
-        self.assertTrue(created.json()["pending_moderation"])
-        self.assertEqual(created.json()["review"]["reviewer_type"], "anonymous")
-        self.assertEqual(duplicate.status_code, 400)
-        self.assertEqual(list_before.json(), [])
-        self.assertEqual(len(list_after.json()), 1)
-        self.assertEqual(stats.json()["count"], 1)
-        self.assertEqual(stats.json()["average"], 5.0)
-        self.assertEqual(all_stats.json()["count"], 1)
-        self.assertEqual(all_stats.json()["average"], 5.0)
+        self.assertEqual(created.status_code, 401)
+        self.assertFalse(Review.objects.exists())
 
     def test_review_title_and_body_have_length_limits(self):
+        self.create_paid_booking()
+        token = self.token_for()
         too_long_body = self.post_json("/api/reviews/", {
             "tour_slug": "wildlife",
             "author_name": "Visitor",
@@ -1066,7 +1052,7 @@ class ReviewTests(ApiTestCase):
             "rating": 5,
             "title": "Great",
             "body": "x" * 1001,
-        })
+        }, token=token)
         too_long_title = self.post_json("/api/reviews/", {
             "tour_slug": "wildlife",
             "author_name": "Visitor",
@@ -1074,7 +1060,7 @@ class ReviewTests(ApiTestCase):
             "rating": 5,
             "title": "x" * 81,
             "body": "Wonderful trip.",
-        })
+        }, token=token)
 
         self.assertEqual(too_long_body.status_code, 400)
         self.assertIn("body", too_long_body.json())
@@ -1105,7 +1091,7 @@ class ReviewTests(ApiTestCase):
         self.assertTrue(created.json()["review"]["verified_guest"])
         self.assertEqual(created.json()["review"]["reviewer_type"], "verified_guest")
 
-    def test_authenticated_unpaid_user_review_requires_admin_approval(self):
+    def test_authenticated_unpaid_user_review_is_rejected(self):
         token = self.token_for()
         payload = {
             "tour_slug": "wildlife",
@@ -1118,12 +1104,9 @@ class ReviewTests(ApiTestCase):
 
         created = self.post_json("/api/reviews/", payload, token=token)
 
-        self.assertEqual(created.status_code, 201, created.content)
-        self.assertTrue(created.json()["pending_moderation"])
-        review = Review.objects.get(user=self.user)
-        self.assertFalse(review.is_approved)
-        self.assertIsNone(review.booking)
-        self.assertEqual(created.json()["review"]["reviewer_type"], "registered_user")
+        self.assertEqual(created.status_code, 403, created.content)
+        self.assertEqual(created.json()["detail"], "You can only review tours from your paid bookings.")
+        self.assertFalse(Review.objects.exists())
 
     def test_review_sort_filter_reply_and_helpful_vote_api(self):
         low = Review.objects.create(
@@ -1168,16 +1151,18 @@ class ReviewTests(ApiTestCase):
 
     @patch("api.views.send_email")
     def test_review_submission_notifies_owner_for_moderation(self, mock_send_email):
+        self.create_paid_booking()
+        token = self.token_for()
         payload = {
             "tour_slug": "wildlife",
             "author_name": "Visitor",
-            "author_email": "notify@example.com",
+            "author_email": TEST_USER_EMAIL,
             "rating": 3,
             "title": "Okay",
             "body": "Please review this.",
         }
 
-        created = self.post_json("/api/reviews/", payload)
+        created = self.post_json("/api/reviews/", payload, token=token)
 
         self.assertEqual(created.status_code, 201, created.content)
         mock_send_email.assert_called_once()

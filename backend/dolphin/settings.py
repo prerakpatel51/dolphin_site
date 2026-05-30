@@ -17,6 +17,10 @@ def env_bool(name, default=False):
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_list(name, default=""):
+    return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
+
+
 IS_TESTING = "test" in sys.argv
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -108,16 +112,19 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URLS = env_list("FRONTEND_URLS", FRONTEND_URL)
+
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = [os.getenv("FRONTEND_URL", "http://localhost:5173")]
+CORS_ALLOWED_ORIGINS = FRONTEND_URLS
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", "http://localhost:5173")]
+CSRF_TRUSTED_ORIGINS = FRONTEND_URLS
 SESSION_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = "Strict"
+SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SAMESITE = "Strict"
+CSRF_COOKIE_SAMESITE = "Lax"
 JWT_COOKIE_SECURE = env_bool("JWT_COOKIE_SECURE", default=not DEBUG)
-JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE", "Strict")
+JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE", "Lax")
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "America/New_York"
@@ -211,6 +218,6 @@ SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_TIMEOUT = int(os.getenv("SMTP_TIMEOUT", "15"))
 EMAIL_FROM = os.getenv("EMAIL_FROM", "bookings@dolphinislandtours.com")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "lewis@dolphinislandtours.com")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")

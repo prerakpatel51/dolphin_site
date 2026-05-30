@@ -134,8 +134,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate_phone(self, value):
         value = value.strip()
-        if not re.fullmatch(r"\d{10}", value):
-            raise serializers.ValidationError("Phone number must be exactly 10 digits.")
+        if not re.fullmatch(r"^\+?\d{10,15}$", value):
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits.")
         return value
 
     def create(self, validated_data):
@@ -180,8 +180,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
     def validate_customer_phone(self, value):
         value = (value or "").strip()
-        if not re.fullmatch(r"\d{10}", value):
-            raise serializers.ValidationError("Phone number must be exactly 10 digits.")
+        if not re.fullmatch(r"^\+?\d{10,15}$", value):
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits.")
         return value
 
     def validate(self, data):

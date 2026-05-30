@@ -46,8 +46,8 @@ class User(AbstractUser):
             errors["first_name"] = "First name is required."
         if not self.last_name.strip():
             errors["last_name"] = "Last name is required."
-        if not re.fullmatch(r"\d{10}", self.phone.strip()):
-            errors["phone"] = "Phone number must be exactly 10 digits."
+        if not re.fullmatch(r"^\+?\d{10,15}$", self.phone.strip()):
+            errors["phone"] = "Phone number must be between 10 and 15 digits."
         if errors:
             raise ValidationError(errors)
 
@@ -869,3 +869,21 @@ post_save.connect(invalidate_site_cache, sender=NavigationLink)
 post_delete.connect(invalidate_site_cache, sender=NavigationLink)
 post_save.connect(invalidate_review_stats_cache, sender=Review)
 post_delete.connect(invalidate_review_stats_cache, sender=Review)
+
+
+@receiver(post_save, sender=User)
+def sync_mailing_list_entry(sender, instance, **kwargs):
+    if instance.accepts_marketing:
+        name = f"{instance.first_name} {instance.last_name}".strip() or instance.username
+        entry, created = MailingListEntry.objects.get_or_create(
+            email__iexact=instance.email,
+            defaults={"email": instance.email, "name": name, "subscribed": True}
+        )
+        if not created and not entry.subscribed:
+            entry.subscribed = True
+            if name and not entry.name:
+                entry.name = name
+            entry.save(update_fields=["subscribed", "name"])
+    else:
+        MailingListEntry.objects.filter(email__iexact=instance.email).update(subscribed=False)
+

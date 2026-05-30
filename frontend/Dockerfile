@@ -3,10 +3,34 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-ARG VITE_API_BASE=/api
+ARG NEXT_PUBLIC_API_BASE=/api
+ARG NEXT_PUBLIC_SITE_URL=https://dolphinsite-production.up.railway.app
+ARG INTERNAL_API_BASE=http://backend:8000/api
+ARG INTERNAL_API_ORIGIN=http://backend:8000
+ARG BACKEND_UPSTREAM=
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ENV INTERNAL_API_BASE=$INTERNAL_API_BASE
+ENV INTERNAL_API_ORIGIN=$INTERNAL_API_ORIGIN
+ENV BACKEND_UPSTREAM=$BACKEND_UPSTREAM
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/templates/default.conf.template
-ENV BACKEND_UPSTREAM=backend:8000
+FROM node:20-alpine
+WORKDIR /app
+ARG NEXT_PUBLIC_API_BASE=/api
+ARG NEXT_PUBLIC_SITE_URL=https://dolphinsite-production.up.railway.app
+ARG INTERNAL_API_BASE=http://backend:8000/api
+ARG INTERNAL_API_ORIGIN=http://backend:8000
+ARG BACKEND_UPSTREAM=backend:8000
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ENV BACKEND_UPSTREAM=$BACKEND_UPSTREAM
+ENV INTERNAL_API_BASE=$INTERNAL_API_BASE
+ENV INTERNAL_API_ORIGIN=$INTERNAL_API_ORIGIN
+ENV NODE_ENV=production
+ENV PORT=3000
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+EXPOSE 3000
+CMD ["node", "server.js"]

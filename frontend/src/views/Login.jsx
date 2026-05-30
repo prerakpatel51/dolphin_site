@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth.jsx";
@@ -20,8 +22,10 @@ export default function Login() {
     setBusy(true); setErr("");
     try {
       await login(email, password);
-      nav(params.get("next") || "/");
-    } catch (e) { setErr("Invalid credentials"); }
+      const nextPath = params.get("next");
+      const safeNext = (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) ? nextPath : "/";
+      nav(safeNext);
+    } catch (e) { setErr(e.message || "Invalid credentials"); }
     finally { setBusy(false); }
   }
 

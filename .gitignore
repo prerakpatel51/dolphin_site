@@ -6,6 +6,7 @@ backend/db.env
 db.sqlite3
 node_modules/
 dist/
+.next/
 staticfiles/
 media/
 .DS_Store
