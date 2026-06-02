@@ -327,7 +327,8 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
             <p className="uppercase tracking-[0.3em] text-ocean-500 text-xs mb-3">Find us</p>
             <h2 className="text-4xl mb-4">{page.cta_title}</h2>
             <p className="text-ocean-700 text-lg">{site.address}</p>
-            <p className="text-ocean-700 mt-3">{site.hours}. {page.cta_body || site.meeting_instructions}</p>
+            {page.cta_body && <p className="text-ocean-700 mt-3">{page.cta_body}</p>}
+            <p className="text-ocean-700 mt-3">{site.hours}. {site.meeting_instructions}</p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/tours" className="btn-primary">Book now</Link>
               <a className="btn-ghost" href={site.maps_url} target="_blank" rel="noreferrer">Open in Maps</a>

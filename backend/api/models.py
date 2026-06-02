@@ -223,7 +223,7 @@ class SiteSettings(models.Model):
         default="Book small-group dolphin, manatee, wildlife, sunset, and rocket launch boat tours from Merritt Island near Cocoa Beach and Cape Canaveral.")
     seo_keywords = models.CharField(max_length=240,
         default="Merritt Island dolphin tours, Cocoa Beach dolphin tour, Cape Canaveral boat tour, Space Coast wildlife tour, Indian River Lagoon tour, Florida sunset cruise")
-    contact_email = models.EmailField(default="info@dolphinislandtours.com")
+    contact_email = models.EmailField(default="lauren@dolphinislandtours.com")
     contact_phone = models.CharField(max_length=40, blank=True, default="321-390-0176")
     address = models.CharField(max_length=240, default="2700 Harbor Town Drive, Merritt Island, FL 32952")
     meeting_instructions = models.CharField(

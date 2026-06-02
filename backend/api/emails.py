@@ -7,6 +7,8 @@ from django.conf import settings
 from django.core import signing
 from django.utils.html import escape, linebreaks
 
+from .models import SiteSettings
+
 
 UNSUBSCRIBE_PLACEHOLDER = "{{ unsubscribe_url }}"
 BUSINESS_ADDRESS = "Dolphin Island Tours, 2700 Harbortown Drive, Merritt Island, FL"
@@ -123,10 +125,13 @@ def send_email(to, subject, html, include_unsubscribe=True):
 
 
 def booking_receipt_html(booking):
+    site = SiteSettings.get()
     customer_name = escape(booking.customer_name)
     booking_id = escape(str(booking.id))
     slot_date = escape(str(booking.slot.date))
     slot_time = escape(str(booking.slot.time))
+    meeting_address = escape(site.address)
+    meeting_instructions = escape(site.meeting_instructions)
     travelers = ""
     if booking.travelers:
         rows = "".join(
@@ -147,9 +152,10 @@ def booking_receipt_html(booking):
         <tr><td><b>Total paid</b></td><td>${booking.total_cents/100:.2f}</td></tr>
       </table>
       {travelers}
-      <p><b>Meeting point:</b> 2700 Harbortown Drive, Merritt Island, FL</p>
+      <p><b>Meeting point:</b> {meeting_address}</p>
+      <p>{meeting_instructions}</p>
       <p>What to bring: sunscreen, water, sunglasses, camera.</p>
-      <p>Questions? Reply to this email or contact lewis@dolphinislandtours.com.</p>
+      <p>Questions? Reply to this email or contact lauren@dolphinislandtours.com.</p>
     </div>
     """
 
@@ -323,7 +329,7 @@ def booking_cancelled_html(booking, reason, alternatives=None):
       <p><b>Booking #:</b> {escape(str(booking.id))}<br>
       <b>Party:</b> {booking.party_size} guests<br>
       <b>Amount paid:</b> ${booking.total_cents/100:.2f} - full refund will be processed within 5-7 business days.</p>
-      <p>Questions? Reply to this email or contact lewis@dolphinislandtours.com.</p>
+      <p>Questions? Reply to this email or contact lauren@dolphinislandtours.com.</p>
     </div>
     """
 

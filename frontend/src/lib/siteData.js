@@ -4,7 +4,7 @@ export const DEFAULT_SETTINGS = {
   seo_title: "Dolphin Island Tours | Private Merritt Island Boat Tours",
   seo_description: "Book private and small-group Merritt Island dolphin tours, sunset cruises, wildlife trips, and rocket launch boat tours near Cocoa Beach.",
   seo_keywords: "Merritt Island dolphin tours, private boat tour Cocoa Beach, exclusive boat tours, Cape Canaveral rocket launch boat tour, Indian River Lagoon, sunset cruise, manatee tour",
-  contact_email: "info@dolphinislandtours.com",
+  contact_email: "lauren@dolphinislandtours.com",
   contact_phone: "321-390-0176",
   address: "2700 Harbor Town Drive, Merritt Island, FL 32952",
   meeting_instructions: "Arrive 15 minutes before departure.",

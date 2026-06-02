@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useSearchParams, Link, Navigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
+import { useSite } from "../lib/site.js";
 import SEO from "../components/SEO.jsx";
 
 function money(cents = 0) {
@@ -32,8 +33,10 @@ function confirmationFilename(booking) {
   return `dolphin-island-confirmation-${booking.id}.html`;
 }
 
-function confirmationHtml(booking) {
+function confirmationHtml(booking, site) {
   const tourName = booking.slot.tour?.name || "Dolphin Island Tours";
+  const meetingAddress = site?.address || "2700 Harbor Town Drive, Merritt Island, FL 32952";
+  const meetingInstructions = site?.meeting_instructions || "Arrive 15 minutes before departure.";
   const travelerRows = (booking.travelers || []).map((traveler, index) => (
     `<li>${escapeHtml(traveler.name || `Guest ${index + 1}`)}${traveler.age !== undefined && traveler.age !== "" ? `, age ${escapeHtml(traveler.age)}` : ""}</li>`
   )).join("");
@@ -83,8 +86,8 @@ function confirmationHtml(booking) {
     </table>
     ${travelerRows ? `<section class="travelers"><h2>Travelers</h2><ol>${travelerRows}</ol></section>` : ""}
     <div class="footer">
-      <p><b>Meeting point:</b> 2700 Harbortown Drive, Merritt Island, FL</p>
-      <p>Please arrive 15 minutes before departure. Bring sunscreen, water, sunglasses, and a camera.</p>
+      <p><b>Meeting point:</b> ${escapeHtml(meetingAddress)}</p>
+      <p>${escapeHtml(meetingInstructions)} Bring sunscreen, water, sunglasses, and a camera.</p>
       <p>Generated on ${escapeHtml(new Date().toLocaleString())}</p>
     </div>
   </main>
@@ -92,8 +95,8 @@ function confirmationHtml(booking) {
 </html>`;
 }
 
-function confirmationDataUrl(booking) {
-  return `data:text/html;charset=utf-8,${encodeURIComponent(confirmationHtml(booking))}`;
+function confirmationDataUrl(booking, site) {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(confirmationHtml(booking, site))}`;
 }
 
 function canDownloadConfirmation(booking) {
@@ -121,6 +124,7 @@ function statusClass(status) {
 
 export default function MyBookings() {
   const { user, loading } = useAuth();
+  const { site } = useSite("bookings");
   const location = useLocation();
   const [list, setList] = useState([]);
   const [params] = useSearchParams();
@@ -180,7 +184,7 @@ export default function MyBookings() {
               )}
               {canDownloadConfirmation(b) ? (
                 <a
-                  href={confirmationDataUrl(b)}
+                  href={confirmationDataUrl(b, site)}
                   download={confirmationFilename(b)}
                   aria-label={`Download confirmation for ${b.slot.tour?.name || "booking"} on ${bookingDate(b)}`}
                   className="btn-ghost !py-2 !px-4 text-sm"
