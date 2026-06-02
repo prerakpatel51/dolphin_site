@@ -1,13 +1,19 @@
 import { DEFAULT_SETTINGS, pageKeyFromPath } from "./siteData.js";
 
-const API_BASE = process.env.INTERNAL_API_BASE || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
 const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite-production.up.railway.app";
+const RAW_API_BASE = process.env.INTERNAL_API_BASE || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+
+function apiBase() {
+  if (RAW_API_BASE.startsWith("http")) return RAW_API_BASE;
+  if (RAW_API_BASE.startsWith("/")) return `${PUBLIC_SITE_URL}${RAW_API_BASE}`;
+  return RAW_API_BASE;
+}
 
 async function getJson(path, revalidate = 300) {
   try {
     const site = new URL(PUBLIC_SITE_URL);
     const cacheOptions = revalidate === 0 ? { cache: "no-store" } : { next: { revalidate } };
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(`${apiBase()}${path}`, {
       headers: {
         host: site.host,
         origin: site.origin,
