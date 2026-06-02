@@ -1,6 +1,8 @@
 import Home from "../src/views/Home.jsx";
 import { getAllReviewStats, getReviews, getSite, getTours, metadataForPath } from "../src/lib/serverApi.js";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata() {
   return metadataForPath("/");
 }

@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
-import { useSite } from "../lib/site.js";
+import { primeSite, useSite } from "../lib/site.js";
 import { breadcrumbJsonLd, graphJsonLd, localBusinessJsonLd, originUrl } from "../lib/seo.js";
 import SEO from "../components/SEO.jsx";
 
-export default function Tours({ initialTours = [] }) {
+export default function Tours({ initialSite, initialTours = [] }) {
+  primeSite(initialSite);
   const [tours, setTours] = useState(initialTours);
   const { site, page } = useSite("tours");
   useEffect(() => {

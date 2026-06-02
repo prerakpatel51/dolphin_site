@@ -6,6 +6,7 @@ const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite
 async function getJson(path, revalidate = 300) {
   try {
     const site = new URL(PUBLIC_SITE_URL);
+    const cacheOptions = revalidate === 0 ? { cache: "no-store" } : { next: { revalidate } };
     const response = await fetch(`${API_BASE}${path}`, {
       headers: {
         host: site.host,
@@ -14,7 +15,7 @@ async function getJson(path, revalidate = 300) {
         "x-forwarded-host": site.host,
         "x-forwarded-proto": site.protocol.replace(":", ""),
       },
-      next: { revalidate },
+      ...cacheOptions,
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return null;
@@ -25,7 +26,7 @@ async function getJson(path, revalidate = 300) {
 }
 
 export async function getSite() {
-  const site = await getJson("/site/");
+  const site = await getJson("/site/", 0);
   return { ...DEFAULT_SETTINGS, ...(site || {}) };
 }
 
