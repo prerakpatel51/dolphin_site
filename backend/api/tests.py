@@ -30,6 +30,7 @@ from .models import (
     EmailDeliveryRecipient,
     EmailCampaign,
     MailingListEntry,
+    FAQItem,
     PageContent,
     PageSection,
     NavigationLink,
@@ -217,6 +218,40 @@ class CreateInitialSuperuserCommandTests(TestCase):
         self.assertTrue(user.check_password(env["DJANGO_SUPERUSER_PASSWORD"]))
 
 
+class SeedCommandTests(TestCase):
+    def test_seed_preserves_existing_tour_customizations(self):
+        tour = Tour.objects.create(
+            slug="dolphin-wildlife-excursion",
+            name="Private Custom Dolphin Trip",
+            short_description="Admin edited description.",
+            long_description="Admin edited long description.",
+            duration_minutes=45,
+            price_per_person=125,
+            min_party=1,
+            max_party=4,
+            image_url="/images/custom.jpg",
+            is_active=False,
+            sort_order=99,
+            seo_title="Custom SEO",
+            seo_description="Custom SEO description.",
+            seo_keywords="custom",
+        )
+
+        call_command("seed")
+
+        tour.refresh_from_db()
+        self.assertEqual(tour.name, "Private Custom Dolphin Trip")
+        self.assertEqual(tour.short_description, "Admin edited description.")
+        self.assertEqual(tour.duration_minutes, 45)
+        self.assertEqual(tour.price_per_person, 125)
+        self.assertEqual(tour.min_party, 1)
+        self.assertEqual(tour.max_party, 4)
+        self.assertEqual(tour.image_url, "/images/custom.jpg")
+        self.assertFalse(tour.is_active)
+        self.assertEqual(tour.sort_order, 99)
+        self.assertEqual(tour.seo_title, "Custom SEO")
+
+
 class PublicSiteAndSeoTests(ApiTestCase):
     def test_site_api_exposes_admin_seo_content_images_and_tracking_ids(self):
         settings = SiteSettings.get()
@@ -253,6 +288,7 @@ class PublicSiteAndSeoTests(ApiTestCase):
             cta_url="/tours",
         )
         NavigationLink.objects.create(area="header", label="Gift cards", url="/gift", sort_order=5)
+        FAQItem.objects.create(question="Can I edit FAQs?", answer="Yes, from admin.", sort_order=5)
 
         res = self.client.get("/api/site/")
 
@@ -269,6 +305,7 @@ class PublicSiteAndSeoTests(ApiTestCase):
         self.assertEqual(body["pages"]["home"]["sections"][0]["image_url"], "/images/admin-hero.jpg")
         self.assertEqual(body["pages"]["home"]["sections"][0]["style"], "sunset")
         self.assertEqual(body["navigation"]["header"][0]["label"], "Gift cards")
+        self.assertEqual(body["faqs"][0]["question"], "Can I edit FAQs?")
 
     def test_tour_api_exposes_admin_seo_fields(self):
         res = self.client.get("/api/tours/")

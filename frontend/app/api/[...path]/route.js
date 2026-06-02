@@ -31,11 +31,12 @@ function targetUrl(request, pathParts) {
 
 function requestHeaders(request) {
   const headers = new Headers(request.headers);
-  const backend = new URL(backendOrigin());
-  headers.set("host", backend.host);
-  headers.set("origin", backend.origin);
-  headers.set("referer", `${backend.origin}/`);
-  headers.set("x-forwarded-host", request.headers.get("host") || "");
+  const publicHost = request.headers.get("host") || "";
+  const publicOrigin = `${request.nextUrl.protocol}//${publicHost}`;
+  if (publicHost) headers.set("host", publicHost);
+  headers.set("origin", publicOrigin);
+  headers.set("referer", `${publicOrigin}/`);
+  headers.set("x-forwarded-host", publicHost);
   headers.set("x-forwarded-proto", request.nextUrl.protocol.replace(":", ""));
   for (const header of HOP_BY_HOP_HEADERS) headers.delete(header);
   return headers;

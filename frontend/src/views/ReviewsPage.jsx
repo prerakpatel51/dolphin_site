@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SEO from "../components/SEO.jsx";
+import ReviewPhotoGallery from "../components/ReviewPhotoGallery.jsx";
 import { Stars, StarInput } from "../components/Stars.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -416,20 +417,7 @@ function ReviewArticle({ review }) {
   const photoUrls = review.photo_urls?.length ? review.photo_urls : (review.photo_url ? [review.photo_url] : []);
   return (
     <article className="card p-6">
-      {photoUrls.length > 0 && (
-        <div className={`mb-4 grid gap-2 ${photoUrls.length === 1 ? "" : "grid-cols-2"}`}>
-          {photoUrls.map((url, index) => (
-            <img
-              key={url}
-              src={url}
-              alt=""
-              className={`w-full object-cover rounded-lg ${photoUrls.length === 1 || index === 0 ? "aspect-[4/3]" : "aspect-square"}`}
-              loading="lazy"
-              decoding="async"
-            />
-          ))}
-        </div>
-      )}
+      <ReviewPhotoGallery urls={photoUrls} className="mb-4" />
       <div className="flex flex-wrap items-center gap-2">
         <Stars value={review.rating} />
         {review.tour_name && (

@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core import signing
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from decimal import Decimal, ROUND_HALF_UP
@@ -20,17 +20,18 @@ from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.utils.html import escape
 from .models import (Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage,
-                     PageContent, NavigationLink, PromoCode, Review, ReviewPhoto, MailingListEntry,
+                     PageContent, NavigationLink, FAQItem, PromoCode, Review, ReviewPhoto, MailingListEntry,
                      ActivityLog, ReviewHelpfulVote, ALL_REVIEW_STATS_CACHE_KEY,
-                     REVIEW_STATS_CACHE_PREFIX, SITE_PAYLOAD_CACHE_KEY)
+                     REVIEW_STATS_CACHE_PREFIX, SITE_PAYLOAD_CACHE_KEY, RateLimitBucket)
 from .serializers import (UserSerializer, TourSerializer, TourSlotSerializer, BookingSerializer,
                           BookingCreateSerializer, SiteSettingsSerializer, SiteImageSerializer,
-                          ContactMessageSerializer, PageContentSerializer, NavigationLinkSerializer, PromoValidateSerializer,
+                          ContactMessageSerializer, PageContentSerializer, NavigationLinkSerializer, FAQItemSerializer, PromoValidateSerializer,
                           ReviewSerializer, ReviewCreateSerializer)
 from .emails import (send_email, booking_receipt_html, admin_notify_html, contact_admin_html,
                      contact_ack_html, review_moderation_admin_html)
 from .email_queue import enqueue_transactional_email
 from .payments import charge
+import hashlib
 import logging
 
 User = get_user_model()
@@ -111,13 +112,36 @@ def normalized_client_ip(request):
 
 
 def rate_limited(request, scope, identifier="", limit=10, window=300):
-    key = f"rate:{scope}:{client_ip(request)}:{identifier}".lower()
+    raw_key = f"{scope}:{client_ip(request)}:{identifier}".lower()
+    key = f"rate:{scope}:{hashlib.sha256(raw_key.encode('utf-8')).hexdigest()}"
+    now = timezone.now()
+    expires_at = now + timedelta(seconds=window)
+
     try:
-        count = cache.incr(key)
-    except ValueError:
-        cache.add(key, 1, timeout=window)
-        count = 1
-    return count > limit
+        with transaction.atomic():
+            bucket = RateLimitBucket.objects.select_for_update().filter(key=key).first()
+            if bucket is None:
+                RateLimitBucket.objects.create(key=key, count=1, expires_at=expires_at)
+                return False
+            if bucket.expires_at <= now:
+                bucket.count = 1
+                bucket.expires_at = expires_at
+                bucket.save(update_fields=["count", "expires_at", "updated_at"])
+                return False
+            bucket.count += 1
+            bucket.save(update_fields=["count", "updated_at"])
+            return bucket.count > limit
+    except IntegrityError:
+        with transaction.atomic():
+            bucket = RateLimitBucket.objects.select_for_update().get(key=key)
+            if bucket.expires_at <= now:
+                bucket.count = 1
+                bucket.expires_at = expires_at
+                bucket.save(update_fields=["count", "expires_at", "updated_at"])
+                return False
+            bucket.count += 1
+            bucket.save(update_fields=["count", "updated_at"])
+            return bucket.count > limit
 
 
 def tax_cents_for(amount_cents, tax_rate_percent):
@@ -672,6 +696,7 @@ class SiteSettingsView(APIView):
             "header": NavigationLinkSerializer([link for link in nav_links if link.area == "header"], many=True).data,
             "footer": NavigationLinkSerializer([link for link in nav_links if link.area == "footer"], many=True).data,
         }
+        data["faqs"] = FAQItemSerializer(FAQItem.objects.filter(is_active=True).order_by("sort_order", "id"), many=True).data
         cache.set(SITE_PAYLOAD_CACHE_KEY, data, getattr(settings, "SITE_CACHE_SECONDS", 300))
         return Response(data)
 

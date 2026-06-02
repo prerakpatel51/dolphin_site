@@ -1,8 +1,10 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password as django_validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 import re
-from .models import Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage, PageContent, PageSection, NavigationLink
+from .models import Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage, PageContent, PageSection, NavigationLink, FAQItem
 
 REVIEW_TITLE_MAX_LENGTH = 80
 REVIEW_BODY_MAX_LENGTH = 1000
@@ -37,7 +39,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
                   "review_count", "average_rating", "google_analytics_id", "google_tag_manager_id",
                   "google_ads_id", "google_ads_booking_conversion_label", "meta_pixel_id",
                   "facebook_url", "instagram_url", "youtube_url", "tiktok_url",
-                  "tripadvisor_url", "google_business_url")
+                  "tripadvisor_url", "google_business_url", "footer_legal_text")
 
 
 class SiteImageSerializer(serializers.ModelSerializer):
@@ -98,6 +100,12 @@ class NavigationLinkSerializer(serializers.ModelSerializer):
         fields = ("id", "area", "label", "url", "visibility", "is_button", "opens_new_tab", "sort_order")
 
 
+class FAQItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FAQItem
+        fields = ("id", "question", "answer", "sort_order")
+
+
 class ContactMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactMessage
@@ -136,6 +144,13 @@ class UserSerializer(serializers.ModelSerializer):
         value = value.strip()
         if not re.fullmatch(r"^\+?\d{10,15}$", value):
             raise serializers.ValidationError("Phone number must be between 10 and 15 digits.")
+        return value
+
+    def validate_password(self, value):
+        try:
+            django_validate_password(value, user=self.instance)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
         return value
 
     def create(self, validated_data):

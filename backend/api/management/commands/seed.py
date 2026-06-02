@@ -95,8 +95,8 @@ PAGE_DEFAULTS = {
         "seo_description": "Small-group Merritt Island boat tours near Cocoa Beach. See dolphins, manatees, birds, sunsets, and Space Coast rocket launches on the Indian River Lagoon.",
         "seo_keywords": "Merritt Island dolphin tours, Cocoa Beach wildlife tours, Indian River Lagoon boat tour, Space Coast sunset cruise, manatee sightseeing Florida, Cape Canaveral rocket launch boat tour",
         "hero_eyebrow": "Merritt Island · Cocoa Beach · Space Coast, FL",
-        "hero_title": "Dolphin, wildlife, sunset, and rocket-launch boat tours.",
-        "hero_subtitle": "Small-group tours from the Indian River Lagoon near Cocoa Beach and Cape Canaveral. See wild dolphins, manatees, birds, sunsets, and launch-day views with a local captain.",
+        "hero_title": "Cruise with Dolphins, Sunsets, Rocket Launches, and Smiles",
+        "hero_subtitle": "Small-group Merritt Island boat tours for dolphin watching, sunsets, rocket launch viewing, and easy days on the water.",
         "primary_button_label": "Book a tour",
         "primary_button_url": "/tours",
         "secondary_button_label": "What you'll see",
@@ -132,10 +132,22 @@ PAGE_DEFAULTS = {
         "seo_title": "About Dolphin Island Tours | Local Space Coast Boat Captain",
         "seo_description": "Meet Dolphin Island Tours, a locally owned Merritt Island boat tour company sharing Indian River Lagoon dolphins, manatees, birds, sunsets, and Space Coast stories since 2010.",
         "seo_keywords": "local Merritt Island boat captain, Dolphin Island Tours about, Space Coast eco tour, Indian River Lagoon wildlife guide, Cocoa Beach dolphin tour company",
-        "hero_eyebrow": "Our story",
-        "hero_title": "A local Space Coast boat tour company.",
-        "intro_body": "Dolphin Island Tours was founded in 2010 with a simple mission: share the wonder of the Space Coast with small groups of curious travelers. We run personal, affordable, eco-conscious boat tours from Merritt Island, Florida.",
-        "section_one_title": "Our values",
+        "hero_eyebrow": "About us",
+        "hero_title": "About Dolphin Island Tours",
+        "intro_title": "Welcome aboard.",
+        "intro_body": (
+            "Welcome to Dolphin Island Tours, where unforgettable memories meet the beauty of Florida's coastline. "
+            "Based in Merritt Island, we created our dolphin tour company from a love of the water, wildlife, and "
+            "sharing the natural beauty of the Space Coast with others.\n\n"
+            "What started as a dream quickly became a mission to give families, couples, and visitors a relaxing "
+            "and exciting way to experience dolphins in their natural habitat.\n\n"
+            "Our tours are designed to feel personal, welcoming, and authentic. Whether you're spotting playful "
+            "dolphins, enjoying a breathtaking sunset, or simply relaxing on the water, we want every guest to "
+            "leave with memories they'll never forget.\n\n"
+            "We are proud to be locally owned and operated, and we can't wait to welcome you aboard."
+        ),
+        "section_one_title": "Personal, welcoming, and authentic.",
+        "section_one_body": "Every trip is built around small groups, local knowledge, and a relaxed Space Coast experience.",
     },
     "contact": {
         "hero": "contact_hero",
@@ -211,8 +223,8 @@ class Command(BaseCommand):
             self.stdout.write(f"{'created' if created else 'exists'} page content: {page}")
 
         for t in TOURS:
-            obj, created = Tour.objects.update_or_create(slug=t["slug"], defaults=t)
-            self.stdout.write(f"{'created' if created else 'updated'}: {obj.name}")
+            obj, created = Tour.objects.get_or_create(slug=t["slug"], defaults=t)
+            self.stdout.write(f"{'created' if created else 'exists'}: {obj.name}")
 
         today = timezone.now().date()
         created_n = 0

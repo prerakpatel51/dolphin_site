@@ -1,4 +1,5 @@
 import smtplib
+import socket
 import ssl
 from email.message import EmailMessage
 import requests
@@ -54,6 +55,30 @@ def unsubscribe_headers(email):
     }
 
 
+class IPv4SMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        last_error = None
+        for family, socktype, proto, _canonname, sockaddr in socket.getaddrinfo(
+            host, port, socket.AF_INET, socket.SOCK_STREAM
+        ):
+            sock = None
+            try:
+                sock = socket.socket(family, socktype, proto)
+                sock.settimeout(timeout)
+                if self.source_address:
+                    sock.bind(self.source_address)
+                sock.connect(sockaddr)
+                return sock
+            except OSError as exc:
+                last_error = exc
+                if sock is not None:
+                    sock.close()
+                continue
+        if last_error:
+            raise last_error
+        raise OSError(f"No IPv4 address found for SMTP host {host}")
+
+
 def _send_via_smtp(to, subject, html, headers=None):
     recipients = [to] if isinstance(to, str) else list(to)
     msg = EmailMessage()
@@ -65,7 +90,7 @@ def _send_via_smtp(to, subject, html, headers=None):
     msg.set_content("This email requires an HTML-capable client.")
     msg.add_alternative(html, subtype="html")
     ctx = ssl.create_default_context()
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT) as s:
+    with IPv4SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT) as s:
         s.ehlo()
         s.starttls(context=ctx)
         s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
@@ -74,7 +99,7 @@ def _send_via_smtp(to, subject, html, headers=None):
 
 
 def send_email(to, subject, html, include_unsubscribe=True):
-    """Send via Gmail SMTP if configured, else Resend, else noop."""
+    """Send via SMTP if configured, else Resend, else noop."""
     recipients = [to] if isinstance(to, str) else list(to)
     headers = {}
     if include_unsubscribe and len(recipients) == 1:

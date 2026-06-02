@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import { Stars, StarInput } from "./Stars.jsx";
 import { formatPhotoSize, MAX_REVIEW_PHOTOS, prepareReviewPhotos } from "../lib/reviewPhotos.js";
+import ReviewPhotoGallery from "./ReviewPhotoGallery.jsx";
 
 const REVIEW_TITLE_MAX = 80;
 const REVIEW_BODY_MAX = 1000;
@@ -219,6 +220,7 @@ export default function Reviews({ tourSlug }) {
         {reviews.length === 0 && <p className="text-ocean-600 col-span-full">No reviews yet — be the first!</p>}
         {visibleReviews.map(r => (
           <article key={r.id} className={`card p-5 sm:p-6 ${r.pending ? "border-amber-300 bg-amber-50/40" : ""}`}>
+            <ReviewPhotoGallery urls={reviewPhotoUrls(r)} className="mb-4" />
             <div className="flex items-start justify-between gap-3">
               <Stars value={r.rating} />
               <div className="flex flex-wrap justify-end gap-2">
@@ -233,19 +235,6 @@ export default function Reviews({ tourSlug }) {
                 )}
               </div>
             </div>
-            {(r.photo_urls?.length || r.photo_url) && (
-              <div className={`mt-4 grid gap-2 ${((r.photo_urls?.length || 0) > 1) ? "grid-cols-2" : ""}`}>
-                {(r.photo_urls?.length ? r.photo_urls : [r.photo_url]).map((url, index) => (
-                  <img
-                    key={url}
-                    src={url}
-                    alt=""
-                    className={`w-full object-cover rounded-lg ${index === 0 ? "aspect-[4/3]" : "aspect-square"}`}
-                    loading="lazy"
-                  />
-                ))}
-              </div>
-            )}
             {r.title && <h3 className="text-lg mt-2">{r.title}</h3>}
             <p className="text-ocean-800 mt-2 leading-relaxed whitespace-pre-line">{r.body}</p>
             {r.reply_text && (
@@ -389,4 +378,8 @@ export default function Reviews({ tourSlug }) {
       )}
     </section>
   );
+}
+
+export function reviewPhotoUrls(review) {
+  return review.photo_urls?.length ? review.photo_urls : (review.photo_url ? [review.photo_url] : []);
 }

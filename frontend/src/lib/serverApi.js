@@ -5,7 +5,15 @@ const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite
 
 async function getJson(path, revalidate = 300) {
   try {
+    const site = new URL(PUBLIC_SITE_URL);
     const response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        host: site.host,
+        origin: site.origin,
+        referer: `${site.origin}/`,
+        "x-forwarded-host": site.host,
+        "x-forwarded-proto": site.protocol.replace(":", ""),
+      },
       next: { revalidate },
       signal: AbortSignal.timeout(5000),
     });

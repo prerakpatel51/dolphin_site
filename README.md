@@ -40,7 +40,7 @@ cp .env.example .env       # fill in Square + Resend keys (optional for local)
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed              # creates 2 tours + 30 days of slots
+python manage.py seed              # creates missing starter tours + 30 days of slots
 python manage.py createsuperuser   # for /admin
 python manage.py runserver
 ```

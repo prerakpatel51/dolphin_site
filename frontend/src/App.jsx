@@ -49,6 +49,7 @@ export default function App() {
   const { page: currentPage } = useSite(pageKeyFromPath(location.pathname));
   const logo = imageFrom(site, "logo", "/images/logo.png");
   const [open, setOpen] = useState(false);
+  const footerLinks = visibleLinks(site.navigation?.footer || [], user);
   useEffect(() => { initMarketingTags(site); }, [site]);
   useEffect(() => {
     trackPageView(site, `${location.pathname}${location.search}`);
@@ -155,33 +156,51 @@ export default function App() {
             <div className="inline-flex bg-white rounded-md p-1.5 mb-3">
               <img src={logo} alt="" className="h-10 sm:h-12 w-auto" />
             </div>
+            <h4 className="font-semibold mb-2">{site.site_name}</h4>
             <p className="text-ocean-200 text-sm">{site.tagline}</p>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Visit</h4>
-            <p className="text-sm text-ocean-200">{site.address}</p>
-            <p className="text-sm text-ocean-200 mt-2">{site.hours}</p>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Contact</h4>
-            <a className="block text-sm text-ocean-200 hover:text-white break-all" href={`mailto:${site.contact_email}`}>{site.contact_email}</a>
+            <p className="text-sm text-ocean-200 mt-4">{site.address}</p>
+            {site.maps_url && <a className="block text-sm text-ocean-200 hover:text-white mt-2 underline underline-offset-4" href={site.maps_url} target="_blank" rel="noreferrer">Map</a>}
+            <a className="block text-sm text-ocean-200 hover:text-white break-all mt-2" href={`mailto:${site.contact_email}`}>{site.contact_email}</a>
             {site.contact_phone && <a className="block text-sm text-ocean-200 hover:text-white mt-2" href={`tel:${site.contact_phone}`}>{site.contact_phone}</a>}
-            <Link to="/contact" className="block text-sm text-ocean-200 hover:text-white mt-2 underline">Send a message →</Link>
-
-            <div className="mt-6 flex gap-4">
+          </div>
+          <div>
+            <h4 className="font-semibold mb-3">Quick Links</h4>
+            <nav className="flex flex-col gap-2">
+              {footerLinks.map(link => <FooterLink key={`${link.label}-${link.url}`} link={link} />)}
+            </nav>
+          </div>
+          <div>
+            <h4 className="font-semibold mb-3">Follow Us</h4>
+            <div className="flex gap-4">
               {site.facebook_url && <a href={site.facebook_url} target="_blank" rel="noreferrer" className="text-ocean-300 hover:text-white transition-colors" aria-label="Facebook"><FacebookIcon /></a>}
               {site.instagram_url && <a href={site.instagram_url} target="_blank" rel="noreferrer" className="text-ocean-300 hover:text-white transition-colors" aria-label="Instagram"><InstagramIcon /></a>}
-              {site.youtube_url && <a href={site.youtube_url} target="_blank" rel="noreferrer" className="text-ocean-300 hover:text-white transition-colors" aria-label="YouTube"><YouTubeIcon /></a>}
               {site.tiktok_url && <a href={site.tiktok_url} target="_blank" rel="noreferrer" className="text-ocean-300 hover:text-white transition-colors" aria-label="TikTok"><TikTokIcon /></a>}
+              {site.youtube_url && <a href={site.youtube_url} target="_blank" rel="noreferrer" className="text-ocean-300 hover:text-white transition-colors" aria-label="YouTube"><YouTubeIcon /></a>}
             </div>
           </div>
         </div>
         <div className="text-center text-xs text-ocean-300 py-4 border-t border-ocean-800">
-          &copy; {new Date().getFullYear()} {site.site_name}
+          {site.footer_legal_text || `Copyright © ${new Date().getFullYear()} ${site.site_name}`}
         </div>
       </footer>
     </div>
   );
+}
+
+function visibleLinks(links, user) {
+  return links.filter(link => {
+    if (link.visibility === "authenticated") return Boolean(user);
+    if (link.visibility === "anonymous") return !user;
+    return true;
+  });
+}
+
+function FooterLink({ link }) {
+  const className = "text-sm text-ocean-200 hover:text-white transition-colors";
+  if (/^https?:\/\//.test(link.url) || link.opens_new_tab) {
+    return <a href={link.url} target={link.opens_new_tab ? "_blank" : undefined} rel={link.opens_new_tab ? "noreferrer" : undefined} className={className}>{link.label}</a>;
+  }
+  return <Link to={link.url} className={className}>{link.label}</Link>;
 }
 
 function FacebookIcon() {

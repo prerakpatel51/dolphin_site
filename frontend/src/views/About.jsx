@@ -35,7 +35,7 @@ export default function About() {
       <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
         {page.intro_eyebrow && <p className="uppercase tracking-[0.24em] text-ocean-500 text-xs mb-3">{page.intro_eyebrow}</p>}
         {page.intro_title && <h2 className="text-3xl sm:text-4xl mb-4">{page.intro_title}</h2>}
-        <p className="text-lg sm:text-xl text-ocean-800 leading-relaxed">
+        <p className="text-lg sm:text-xl text-ocean-800 leading-relaxed whitespace-pre-line">
           {page.intro_body}
         </p>
 

@@ -92,7 +92,8 @@ test("full local stack supports signup, login, booking, reviews, and admin", asy
   await page.getByLabel("Last name").fill(user.lastName);
   await page.getByLabel(/^Email$/).fill(user.email);
   await page.getByLabel("Phone").fill(user.phone);
-  await page.getByLabel("Password (min 8 chars)").fill(user.password);
+  await page.getByLabel("Password", { exact: true }).fill(user.password);
+  await page.getByLabel("Confirm Password").fill(user.password);
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByRole("link", { name: /^Account$/ })).toBeVisible();
 

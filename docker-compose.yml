@@ -11,9 +11,10 @@ services:
     env_file: ./backend/.env
     environment:
       DJANGO_SECRET_KEY: local-compose-development-secret
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,testserver
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,frontend,testserver
       FRONTEND_URL: http://localhost:3000
       FRONTEND_URLS: http://localhost:3000,http://frontend:3000
+      FAKE_PAYMENTS: "1"
     depends_on: [db]
     user: root
     volumes:
@@ -31,7 +32,7 @@ services:
     env_file: ./backend/.env
     environment:
       DJANGO_SECRET_KEY: local-compose-development-secret
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,testserver
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend,frontend,testserver
       FRONTEND_URL: http://localhost:3000
       FRONTEND_URLS: http://localhost:3000,http://frontend:3000
     depends_on: [db, backend]

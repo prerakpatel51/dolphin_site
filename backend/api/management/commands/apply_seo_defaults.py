@@ -10,7 +10,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         settings = SiteSettings.get()
         settings.site_name = "Dolphin Island Tours"
-        settings.tagline = "Small-group dolphin, wildlife, sunset, and rocket-launch boat tours on Florida's Space Coast."
+        settings.tagline = "Creating unforgettable dolphin encounters on Florida's Space Coast."
         settings.seo_title = "Dolphin Island Tours | Merritt Island Dolphin & Sunset Boat Tours"
         settings.seo_description = (
             "Book small-group dolphin, manatee, wildlife, sunset, and rocket launch boat tours "

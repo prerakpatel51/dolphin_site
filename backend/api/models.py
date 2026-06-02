@@ -113,6 +113,21 @@ class ActivityLog(models.Model):
             logger.error("Failed to persist audit log.", exc_info=(type(exc), exc, exc.__traceback__))
 
 
+class RateLimitBucket(models.Model):
+    key = models.CharField(max_length=255, unique=True)
+    count = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["expires_at"], name="ratelimit_expires_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.key} ({self.count})"
+
+
 class Tour(models.Model):
     """Tour product type (Sunset Cruise, Dolphin Wildlife Excursion, etc.)."""
     slug = models.SlugField(unique=True)
@@ -202,15 +217,15 @@ class SiteImage(models.Model):
 class SiteSettings(models.Model):
     """Singleton: global SEO + contact info."""
     site_name = models.CharField(max_length=120, default="Dolphin Island Tours")
-    tagline = models.CharField(max_length=240, default="Small-group dolphin, wildlife, sunset, and rocket-launch boat tours on Florida's Space Coast.")
+    tagline = models.CharField(max_length=240, default="Creating unforgettable dolphin encounters on Florida's Space Coast.")
     seo_title = models.CharField(max_length=70, default="Dolphin Island Tours | Merritt Island Dolphin & Sunset Boat Tours")
     seo_description = models.CharField(max_length=180,
         default="Book small-group dolphin, manatee, wildlife, sunset, and rocket launch boat tours from Merritt Island near Cocoa Beach and Cape Canaveral.")
     seo_keywords = models.CharField(max_length=240,
         default="Merritt Island dolphin tours, Cocoa Beach dolphin tour, Cape Canaveral boat tour, Space Coast wildlife tour, Indian River Lagoon tour, Florida sunset cruise")
-    contact_email = models.EmailField(default="lewis@dolphinislandtours.com")
-    contact_phone = models.CharField(max_length=40, blank=True)
-    address = models.CharField(max_length=240, default="2700 Harbortown Drive, Merritt Island, FL")
+    contact_email = models.EmailField(default="info@dolphinislandtours.com")
+    contact_phone = models.CharField(max_length=40, blank=True, default="321-390-0176")
+    address = models.CharField(max_length=240, default="2700 Harbor Town Drive, Merritt Island, FL 32952")
     meeting_instructions = models.CharField(
         max_length=240,
         default="Arrive 15 minutes before departure.",
@@ -219,11 +234,11 @@ class SiteSettings(models.Model):
     hours = models.CharField(max_length=120, default="Open daily 9 AM – 5 PM")
     maps_url = models.URLField(
         blank=True,
-        default="https://maps.google.com/?q=2700+Harbortown+Drive+Merritt+Island+FL",
+        default="https://maps.google.com/?q=2700+Harbor+Town+Drive+Merritt+Island+FL+32952",
     )
     map_embed_url = models.URLField(
         blank=True,
-        default="https://www.google.com/maps?q=2700+Harbortown+Drive+Merritt+Island+FL&output=embed",
+        default="https://www.google.com/maps?q=2700+Harbor+Town+Drive+Merritt+Island+FL+32952&output=embed",
     )
     price_blurb = models.CharField(max_length=160, default="$60 per person · 3–6 guests", blank=True)
     review_count = models.PositiveIntegerField(default=500)
@@ -239,6 +254,11 @@ class SiteSettings(models.Model):
     tiktok_url = models.URLField(blank=True)
     tripadvisor_url = models.URLField(blank=True)
     google_business_url = models.URLField(blank=True)
+    footer_legal_text = models.CharField(
+        max_length=240,
+        blank=True,
+        default="Copyright © 2026 Dolphin Island Tours LLC | Licensed & Insured | USCG Certified Captain",
+    )
     robots_txt = models.TextField(default="User-agent: *\nAllow: /\nSitemap: /sitemap.xml")
 
     class Meta:
@@ -394,6 +414,26 @@ class NavigationLink(models.Model):
 
     def __str__(self):
         return f"{self.get_area_display()}: {self.label}"
+
+
+class FAQItem(models.Model):
+    """Editable homepage FAQ item."""
+    question = models.CharField(max_length=220)
+    answer = models.TextField()
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "FAQ item"
+        verbose_name_plural = "FAQ items"
+        indexes = [
+            models.Index(fields=["is_active", "sort_order"], name="faq_active_sort_idx"),
+        ]
+
+    def __str__(self):
+        return self.question
 
 
 class ContactMessage(models.Model):
@@ -867,6 +907,8 @@ post_save.connect(invalidate_site_cache, sender=PageSection)
 post_delete.connect(invalidate_site_cache, sender=PageSection)
 post_save.connect(invalidate_site_cache, sender=NavigationLink)
 post_delete.connect(invalidate_site_cache, sender=NavigationLink)
+post_save.connect(invalidate_site_cache, sender=FAQItem)
+post_delete.connect(invalidate_site_cache, sender=FAQItem)
 post_save.connect(invalidate_review_stats_cache, sender=Review)
 post_delete.connect(invalidate_review_stats_cache, sender=Review)
 
@@ -886,4 +928,3 @@ def sync_mailing_list_entry(sender, instance, **kwargs):
             entry.save(update_fields=["subscribed", "name"])
     else:
         MailingListEntry.objects.filter(email__iexact=instance.email).update(subscribed=False)
-

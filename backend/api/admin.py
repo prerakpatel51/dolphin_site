@@ -12,7 +12,7 @@ from django.utils.html import format_html, format_html_join
 from .models import (User, Tour, TourSlot, Booking, SiteImage, SiteSettings, ContactMessage,
                      PageContent, PageSection, NavigationLink, PromoCode, MailingListEntry, EmailCampaign,
                      EmailDeliveryJob, EmailDeliveryRecipient, DeletedBookingReport,
-                     ActivityLog, archive_booking_for_report)
+                     ActivityLog, FAQItem, archive_booking_for_report)
 import logging
 import secrets, string
 from itertools import chain
@@ -523,6 +523,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                              "classes": ("collapse",)}),
         ("Social links", {"fields": ("facebook_url", "instagram_url", "youtube_url",
                                      "tiktok_url", "tripadvisor_url", "google_business_url")}),
+        ("Footer", {"fields": ("footer_legal_text",)}),
         ("Robots.txt", {"fields": ("robots_txt",), "classes": ("collapse",)}),
     )
 
@@ -584,6 +585,19 @@ class NavigationLinkAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Link", {"fields": ("area", "label", "url", "sort_order")}),
         ("Display", {"fields": ("visibility", "is_button", "opens_new_tab", "is_active")}),
+    )
+
+
+@admin.register(FAQItem)
+class FAQItemAdmin(admin.ModelAdmin):
+    list_display = ("sort_order", "question", "is_active", "updated_at")
+    list_display_links = ("question",)
+    list_editable = ("sort_order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("question", "answer")
+    fieldsets = (
+        ("FAQ", {"fields": ("question", "answer")}),
+        ("Display", {"fields": ("sort_order", "is_active")}),
     )
 
 
@@ -1109,6 +1123,7 @@ class EmailDeliveryJobAdmin(admin.ModelAdmin):
     list_display = ("created_at", "name", "source", "status", "total_count", "sent_count", "failed_count", "campaign")
     list_filter = ("status", "source", "created_at")
     search_fields = ("name", "created_by", "recipients__email")
+    actions = ("delete_selected_email_jobs", "delete_sent_email_jobs", "delete_failed_email_jobs")
     readonly_fields = (
         "name", "source", "campaign", "status", "total_count", "sent_count",
         "failed_count", "created_by", "created_at", "started_at", "finished_at",
@@ -1117,8 +1132,25 @@ class EmailDeliveryJobAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
+    @admin.action(description="Delete selected email jobs and their recipients")
+    def delete_selected_email_jobs(self, request, queryset):
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(request, f"Deleted {count} email delivery job(s).", messages.SUCCESS)
+
+    @admin.action(description="Delete selected sent email jobs")
+    def delete_sent_email_jobs(self, request, queryset):
+        filtered = queryset.filter(status="sent")
+        count = filtered.count()
+        filtered.delete()
+        self.message_user(request, f"Deleted {count} sent email delivery job(s).", messages.SUCCESS)
+
+    @admin.action(description="Delete selected failed email jobs")
+    def delete_failed_email_jobs(self, request, queryset):
+        filtered = queryset.filter(status="failed")
+        count = filtered.count()
+        filtered.delete()
+        self.message_user(request, f"Deleted {count} failed email delivery job(s).", messages.SUCCESS)
 
 
 @admin.register(EmailDeliveryRecipient)
@@ -1126,13 +1158,40 @@ class EmailDeliveryRecipientAdmin(admin.ModelAdmin):
     list_display = ("created_at", "email", "subject", "job", "status", "attempts", "sent_at")
     list_filter = ("status", "created_at", "job")
     search_fields = ("email", "subject", "last_error", "job__name")
+    actions = ("delete_selected_recipients", "delete_sent_recipients", "delete_failed_recipients")
     readonly_fields = ("job", "email", "subject", "html", "status", "promo_code", "attempts", "last_error", "sent_at", "created_at")
 
     def has_add_permission(self, request):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
+    def delete_queryset(self, request, queryset):
+        job_ids = list(queryset.values_list("job_id", flat=True).distinct())
+        queryset.delete()
+        self.refresh_job_stats(job_ids)
+
+    def refresh_job_stats(self, job_ids):
+        for job in EmailDeliveryJob.objects.filter(id__in=job_ids):
+            job.refresh_stats()
+
+    @admin.action(description="Delete selected email recipients")
+    def delete_selected_recipients(self, request, queryset):
+        count = queryset.count()
+        self.delete_queryset(request, queryset)
+        self.message_user(request, f"Deleted {count} email recipient record(s).", messages.SUCCESS)
+
+    @admin.action(description="Delete selected sent recipients")
+    def delete_sent_recipients(self, request, queryset):
+        filtered = queryset.filter(status="sent")
+        count = filtered.count()
+        self.delete_queryset(request, filtered)
+        self.message_user(request, f"Deleted {count} sent email recipient record(s).", messages.SUCCESS)
+
+    @admin.action(description="Delete selected failed recipients")
+    def delete_failed_recipients(self, request, queryset):
+        filtered = queryset.filter(status="failed")
+        count = filtered.count()
+        self.delete_queryset(request, filtered)
+        self.message_user(request, f"Deleted {count} failed email recipient record(s).", messages.SUCCESS)
 
 
 @admin.register(ActivityLog)

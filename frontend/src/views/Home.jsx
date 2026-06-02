@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { imageFrom, primeSite, useSite } from "../lib/site.js";
-import { breadcrumbJsonLd, faqJsonLd, graphJsonLd, homeFaq, localBusinessJsonLd, originUrl, websiteJsonLd } from "../lib/seo.js";
+import { breadcrumbJsonLd, faqJsonLd, graphJsonLd, localBusinessJsonLd, originUrl, websiteJsonLd } from "../lib/seo.js";
 import SEO from "../components/SEO.jsx";
 import { Stars } from "../components/Stars.jsx";
 
@@ -12,15 +12,6 @@ const HIGHLIGHTS = [
   { img: "/images/dolphin.jpg", title: "Wild dolphins", body: "Bottlenose dolphins ride the boat's wake almost every trip — a quiet thrill you'll remember for years." },
   { img: "/images/manatee.jpg", title: "Manatees & birds", body: "Gentle manatees, ospreys, roseate spoonbills, and pelicans live throughout the Indian River Lagoon." },
   { img: "/images/rocket.jpg", title: "Rocket launches", body: "On launch days, the lagoon is the best seat in the house. Ask about our launch-day departures." },
-];
-
-const FAQ = [
-  ...homeFaq,
-  ["What should I bring?", "Sunscreen, hat, sunglasses, water, a light layer, and your camera. Closed-toe shoes recommended."],
-  ["What if the weather is bad?", "If we have to cancel for weather we'll reschedule or refund in full — no questions."],
-  ["Are kids welcome?", "Absolutely. Life jackets in all sizes provided. Best for ages 4+."],
-  ["Can we charter privately?", "Yes — the boat is yours for 3–6 guests on every tour. No strangers."],
-  ["Where do we meet?", "2700 Harbortown Drive, Merritt Island, FL. Arrive 15 minutes before departure."],
 ];
 
 export default function Home({ initialSite, initialTours = [], initialFeaturedReviews = [], initialBackupReviews = [], initialReviewStats }) {
@@ -84,6 +75,7 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
     imageFrom(site, "gallery_7", "/images/welcome.jpg"),
     imageFrom(site, "gallery_8", "/images/rocket.jpg"),
   ];
+  const faqs = (site.faqs || []).map(faq => [faq.question, faq.answer]).filter(([question, answer]) => question && answer);
 
   return (
     <div>
@@ -97,7 +89,7 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
           localBusinessJsonLd(siteWithReviewStats, heroImage),
           websiteJsonLd(siteWithReviewStats),
           breadcrumbJsonLd([{ name: "Home", path: "/" }]),
-          faqJsonLd(FAQ),
+          faqs.length > 0 ? faqJsonLd(faqs) : null,
           {
             "@type": "ItemList",
             "name": "Dolphin Island Tours boat tour options",
@@ -304,14 +296,14 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
       </section>
 
       {/* FAQ */}
-      <section className="bg-white py-16 sm:py-24">
+      <section id="faq" className="bg-white py-16 sm:py-24 scroll-mt-24">
         <div className="max-w-3xl mx-auto px-4">
           <div className="text-center mb-12">
             <p className="uppercase tracking-[0.3em] text-ocean-500 text-xs mb-3">Good to know</p>
             <h2 className="text-3xl sm:text-5xl">Frequently asked.</h2>
           </div>
           <div className="space-y-3">
-            {FAQ.map(([q, a]) => (
+            {faqs.map(([q, a]) => (
               <details key={q} className="card p-6 group">
                 <summary className="cursor-pointer flex justify-between items-center text-lg font-semibold text-ocean-900 list-none">
                   {q}

@@ -21,6 +21,17 @@ def env_list(name, default=""):
     return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
 
 
+def host_from_url(value):
+    if not value:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(value)
+        return parsed.netloc or parsed.path
+    except Exception:
+        return value
+
+
 IS_TESTING = "test" in sys.argv
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -114,6 +125,16 @@ AUTH_PASSWORD_VALIDATORS = [
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 FRONTEND_URLS = env_list("FRONTEND_URLS", FRONTEND_URL)
+railway_hosts = [
+    os.getenv("RAILWAY_PUBLIC_DOMAIN", ""),
+    os.getenv("RAILWAY_PRIVATE_DOMAIN", ""),
+    f"{os.getenv('RAILWAY_SERVICE_NAME', '')}.railway.internal" if os.getenv("RAILWAY_SERVICE_NAME") else "",
+]
+if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"):
+    railway_hosts.append(".railway.internal")
+for host in [host_from_url(url) for url in FRONTEND_URLS] + railway_hosts:
+    if host and host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = FRONTEND_URLS
