@@ -1,7 +1,9 @@
 import { DEFAULT_SETTINGS, pageKeyFromPath } from "./siteData.js";
 
 const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite-production.up.railway.app";
-const RAW_API_BASE = process.env.INTERNAL_API_BASE || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+const RAW_API_BASE = process.env.BACKEND_UPSTREAM
+  ? `http://${process.env.BACKEND_UPSTREAM}/api`
+  : process.env.INTERNAL_API_BASE || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
 
 function apiBase() {
   if (RAW_API_BASE.startsWith("http")) return RAW_API_BASE;
