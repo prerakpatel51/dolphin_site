@@ -3,6 +3,14 @@ from django.core.management.base import BaseCommand
 from api.management.commands.seed import PAGE_DEFAULTS, TOURS
 from api.models import FAQItem, PageContent, SiteSettings, Tour
 
+TOUR_COPY_FIELDS = (
+    "short_description",
+    "long_description",
+    "seo_title",
+    "seo_description",
+    "seo_keywords",
+)
+
 
 class Command(BaseCommand):
     help = "Apply optimized SEO titles, descriptions, keywords, and page copy to existing content."
@@ -39,20 +47,26 @@ class Command(BaseCommand):
 
         tour_count = 0
         for tour_defaults in TOURS:
-            Tour.objects.update_or_create(slug=tour_defaults["slug"], defaults=tour_defaults)
+            slug = tour_defaults["slug"]
+            tour = Tour.objects.filter(slug=slug).first()
+            if tour:
+                for field in TOUR_COPY_FIELDS:
+                    setattr(tour, field, tour_defaults[field])
+                tour.save(update_fields=TOUR_COPY_FIELDS)
+            else:
+                Tour.objects.create(**tour_defaults)
             tour_count += 1
 
         legacy_tour_count = Tour.objects.filter(slug="rocket-launch").update(
-            name="Rocket Launch Viewing",
-            short_description="Watch Space Coast rocket launches from the water on a private-style boat tour near Cape Canaveral.",
+            short_description="Watch Space Coast rocket launches from the water on a private or small-group boat tour near Cape Canaveral.",
             long_description=(
                 "Watch rocket launches from the Indian River Lagoon with a local Space Coast captain. "
-                "This private-style Merritt Island boat tour is close to Cape Canaveral, Cocoa Beach, "
+                "This Merritt Island boat tour is close to Cape Canaveral, Cocoa Beach, "
                 "Port Canaveral, and Kennedy Space Center, with open-water views and a personal small-group feel."
             ),
             seo_title="Private Rocket Launch Boat Tour | Cape Canaveral",
             seo_description=(
-                "Book a private-style rocket launch viewing boat tour near Cape Canaveral, Cocoa Beach, "
+                "Book a rocket launch viewing boat tour near Cape Canaveral, Cocoa Beach, "
                 "Kennedy Space Center, and Merritt Island."
             ),
             seo_keywords=(
@@ -64,7 +78,7 @@ class Command(BaseCommand):
         faqs = [
             (
                 "Can we book a private or exclusive boat tour?",
-                "Yes. Dolphin Island Tours specializes in small private-style trips for 3 to 6 guests, so your group can enjoy the boat without joining a crowd. Contact us for private tour requests, celebrations, and custom timing.",
+                "Yes. Dolphin Island Tours specializes in private and small-group trips for 3 to 6 guests, so your group can enjoy the boat without joining a crowd. Contact us for private tour requests, celebrations, and custom timing.",
             ),
             (
                 "Are alcohol, smoking, or special onboard preferences allowed?",
@@ -80,7 +94,7 @@ class Command(BaseCommand):
             ),
             (
                 "Do you offer sunset cruises near Cocoa Beach?",
-                "Yes. We offer small-group and private-style sunset cruises from Merritt Island on the Indian River Lagoon, close to Cocoa Beach, Cape Canaveral, and Port Canaveral.",
+                "Yes. We offer private and small-group sunset cruises from Merritt Island on the Indian River Lagoon, close to Cocoa Beach, Cape Canaveral, and Port Canaveral.",
             ),
             (
                 "Can we watch a rocket launch from the boat?",

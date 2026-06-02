@@ -11,10 +11,10 @@ export const businessArea = [
 
 export const homeFaq = [
   ["What wildlife can we see on a Merritt Island boat tour?", "Guests often see bottlenose dolphins, manatees, pelicans, ospreys, shorebirds, and other Indian River Lagoon wildlife. Wildlife sightings vary by season and conditions."],
-  ["Can we book a private or exclusive boat tour?", "Yes. Dolphin Island Tours specializes in small private-style trips for 3 to 6 guests, so your group can enjoy the boat without joining a crowd."],
+  ["Can we book a private or exclusive boat tour?", "Yes. Dolphin Island Tours specializes in private and small-group trips for 3 to 6 guests, so your group can enjoy the boat without joining a crowd."],
   ["Are alcohol, smoking, or special onboard preferences allowed?", "Private trips may be able to accommodate personal preferences when the captain, guests, safety rules, and marina policies allow it. Tell us what you have in mind before booking."],
   ["Where do Dolphin Island Tours depart from?", "Tours depart from 2700 Harbor Town Drive in Merritt Island, Florida, near Cocoa Beach, Cape Canaveral, Port Canaveral, and Kennedy Space Center."],
-  ["Do you offer sunset cruises near Cocoa Beach?", "Yes. Dolphin Island Tours offers small-group and private-style sunset cruises on the Indian River Lagoon from Merritt Island."],
+  ["Do you offer sunset cruises near Cocoa Beach?", "Yes. Dolphin Island Tours offers private and small-group sunset cruises on the Indian River Lagoon from Merritt Island."],
   ["Can we watch a rocket launch from the boat?", "Launch-day departures may be available when schedules and conditions line up. Contact Dolphin Island Tours before booking if rocket launch viewing is your main goal."],
   ["How many guests are on each tour?", "Tours are small-group experiences for 3 to 6 guests per boat."],
 ];

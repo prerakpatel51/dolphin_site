@@ -49,7 +49,7 @@ export default function About() {
         <ul className="space-y-3">
           {[
             ["Wildlife first", "We keep a respectful distance and follow NOAA marine mammal guidelines on every dolphin, manatee, and wildlife tour."],
-            ["Private-style trips", "Maximum six guests per tour means no crowded boat, no strangers if your group fills the trip, and more time on the water."],
+            ["Private and small-group trips", "Maximum six guests per tour means no crowded boat, no strangers if your group fills the trip, and more time on the water."],
             ["Custom requests", "Ask about private tours, exclusive trips, celebrations, custom timing, and onboard preferences before booking."],
             ["Local roots", "We support Brevard County conservation partners and share real Space Coast knowledge from Merritt Island to Cocoa Beach and Cape Canaveral."],
           ].map(([t, b]) => (

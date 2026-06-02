@@ -9,7 +9,7 @@ import SEO from "../components/SEO.jsx";
 import { Stars } from "../components/Stars.jsx";
 
 const HIGHLIGHTS = [
-  { img: "/images/dolphin.jpg", title: "Private-style dolphin tours", body: "Cruise with only 3 to 6 guests, giving your family, couple, or exclusive group a personal Merritt Island dolphin tour." },
+  { img: "/images/dolphin.jpg", title: "Private dolphin tours", body: "Cruise with only 3 to 6 guests, giving your family, couple, or exclusive group a personal Merritt Island dolphin tour." },
   { img: "/images/manatee.jpg", title: "Manatees & lagoon wildlife", body: "Look for manatees, ospreys, roseate spoonbills, pelicans, and Indian River Lagoon wildlife near Cocoa Beach and Cape Canaveral." },
   { img: "/images/rocket.jpg", title: "Rocket launch boat tours", body: "On launch days, the lagoon can be an incredible place to watch. Ask about private launch-day departures near Cape Canaveral." },
 ];
