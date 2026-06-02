@@ -13,4 +13,5 @@ RUN adduser --disabled-password --gecos "" appuser \
 USER appuser
 EXPOSE 8000
 ENV GUNICORN_WORKERS=1
-CMD ["sh", "-c", "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn dolphin.wsgi:application -b [::]:${PORT:-8000} -w ${GUNICORN_WORKERS} --access-logfile /dev/null --error-logfile -"]
+ENV GUNICORN_TIMEOUT=120
+CMD ["sh", "-c", "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn dolphin.wsgi:application -b [::]:${PORT:-8000} -w ${GUNICORN_WORKERS} --timeout ${GUNICORN_TIMEOUT} --access-logfile /dev/null --error-logfile -"]
