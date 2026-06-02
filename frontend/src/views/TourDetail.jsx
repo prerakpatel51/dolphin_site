@@ -137,7 +137,7 @@ export default function TourDetail({ initialTour = null, initialDates = {} }) {
             "image": absoluteUrl(tour.og_image_url || tour.image_url),
             "url": `${originUrl()}/tours/${tour.slug}`,
             "provider": { "@id": `${originUrl()}/#business` },
-            "areaServed": ["Merritt Island", "Cocoa Beach", "Cape Canaveral", "Indian River Lagoon", "Florida Space Coast"],
+            "areaServed": ["Merritt Island", "Cocoa Beach", "Cape Canaveral", "Port Canaveral", "Kennedy Space Center", "Indian River Lagoon", "Florida Space Coast"],
             "offers": {
               "@type": "Offer",
               "price": String(tour.price_per_person),
@@ -145,6 +145,7 @@ export default function TourDetail({ initialTour = null, initialDates = {} }) {
               "availability": "https://schema.org/InStock",
               "url": `${originUrl()}/tours/${tour.slug}`,
             },
+            "touristType": ["Families", "Couples", "Private groups", "Small groups", "Space Coast visitors"],
           },
         ])}
       />

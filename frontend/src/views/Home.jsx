@@ -9,9 +9,9 @@ import SEO from "../components/SEO.jsx";
 import { Stars } from "../components/Stars.jsx";
 
 const HIGHLIGHTS = [
-  { img: "/images/dolphin.jpg", title: "Wild dolphins", body: "Bottlenose dolphins ride the boat's wake almost every trip — a quiet thrill you'll remember for years." },
-  { img: "/images/manatee.jpg", title: "Manatees & birds", body: "Gentle manatees, ospreys, roseate spoonbills, and pelicans live throughout the Indian River Lagoon." },
-  { img: "/images/rocket.jpg", title: "Rocket launches", body: "On launch days, the lagoon is the best seat in the house. Ask about our launch-day departures." },
+  { img: "/images/dolphin.jpg", title: "Private-style dolphin tours", body: "Cruise with only 3 to 6 guests, giving your family, couple, or exclusive group a personal Merritt Island dolphin tour." },
+  { img: "/images/manatee.jpg", title: "Manatees & lagoon wildlife", body: "Look for manatees, ospreys, roseate spoonbills, pelicans, and Indian River Lagoon wildlife near Cocoa Beach and Cape Canaveral." },
+  { img: "/images/rocket.jpg", title: "Rocket launch boat tours", body: "On launch days, the lagoon can be an incredible place to watch. Ask about private launch-day departures near Cape Canaveral." },
 ];
 
 export default function Home({ initialSite, initialTours = [], initialFeaturedReviews = [], initialBackupReviews = [], initialReviewStats }) {
@@ -201,7 +201,7 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
         <div className="relative max-w-3xl mx-auto px-4 text-center text-white">
           <p className="uppercase tracking-[0.3em] text-ocean-200 text-xs mb-4">Family-owned since 2010</p>
           <p className="text-xl sm:text-3xl font-display leading-snug">
-            "We started Dolphin Island Tours so visitors could really see the Space Coast — slowly, quietly, the way the locals do."
+            "We started Dolphin Island Tours so visitors could really see the Space Coast - personally, privately, and the way the locals do."
           </p>
           <p className="mt-6 text-ocean-200">— Lewis, Captain &amp; Founder</p>
           <Link to="/about" className="btn-ghost mt-8 inline-flex">Our story →</Link>

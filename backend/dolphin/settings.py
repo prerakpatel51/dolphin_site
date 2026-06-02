@@ -124,6 +124,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL") or os.getenv("NEXT_PUBLIC_SITE_URL") or FRONTEND_URL
 FRONTEND_URLS = env_list("FRONTEND_URLS", FRONTEND_URL)
 railway_hosts = [
     os.getenv("RAILWAY_PUBLIC_DOMAIN", ""),

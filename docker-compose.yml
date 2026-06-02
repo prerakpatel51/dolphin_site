@@ -21,11 +21,8 @@ services:
       - media:/app/media
       - static:/app/staticfiles
     restart: unless-stopped
-    command: >
-      sh -c "chown -R appuser:appuser /app/media /app/staticfiles &&
-             su appuser -c 'python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
-             gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w 3 --access-logfile /dev/null --error-logfile -'"
+    command:
+      - python manage.py migrate && python manage.py collectstatic --noinput && gunicorn dolphin.wsgi:application -b 0.0.0.0:8000 -w 3 --access-logfile /dev/null --error-logfile -
 
   email_worker:
     build: ./backend
@@ -41,10 +38,8 @@ services:
       - media:/app/media
       - static:/app/staticfiles
     restart: unless-stopped
-    command: >
-      sh -c "chown -R appuser:appuser /app/media /app/staticfiles &&
-             su appuser -c 'python manage.py migrate &&
-             python manage.py process_email_queue --sleep 5 --batch-size 100 --workers 5'"
+    command:
+      - python manage.py migrate && python manage.py process_email_queue --sleep 5 --batch-size 100 --workers 5
 
   frontend:
     build:

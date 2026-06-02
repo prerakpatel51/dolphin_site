@@ -12,6 +12,8 @@ const nextConfig = {
       : process.env.INTERNAL_API_ORIGIN || process.env.INTERNAL_API_BASE?.replace(/\/api\/?$/, "") || "http://localhost:8000";
 
     return [
+      { source: "/sitemap.xml", destination: `${backend}/api/sitemap.xml` },
+      { source: "/robots.txt", destination: `${backend}/api/robots.txt` },
       { source: "/admin", destination: `${backend}/admin/` },
       { source: "/admin/:path*/", destination: `${backend}/admin/:path*/` },
       { source: "/admin/:path*", destination: `${backend}/admin/:path*` },

@@ -1,19 +1,20 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta, time
-from api.models import Tour, TourSlot, SiteImage, PageContent
+from api.models import FAQItem, Tour, TourSlot, SiteImage, PageContent
 
 
 TOURS = [
     {
         "slug": "dolphin-wildlife-excursion",
         "name": "Dolphin Wildlife Excursion",
-        "short_description": "Spot wild dolphins, manatees, pelicans, and shorebirds on a Merritt Island wildlife tour near Cocoa Beach.",
+        "short_description": "Private-style Merritt Island dolphin and wildlife tour near Cocoa Beach for families, couples, and small groups.",
         "long_description": (
             "Cruise the protected Indian River Lagoon around Merritt Island looking for wild bottlenose "
-            "dolphins, manatees, ospreys, pelicans, and shorebirds. This small-group Space Coast wildlife "
-            "tour is close to Cocoa Beach, Cape Canaveral, and Port Canaveral, with local stories about "
-            "lagoon ecology, rockets, and coastal Florida history."
+            "dolphins, manatees, ospreys, pelicans, shorebirds, and Space Coast scenery. This personal "
+            "small-group wildlife tour is close to Cocoa Beach, Cape Canaveral, Port Canaveral, and "
+            "Kennedy Space Center. With only 3 to 6 guests, the trip feels private, relaxed, and easy to "
+            "shape around your group, from family sightseeing to exclusive wildlife time on the water."
         ),
         "duration_minutes": 120,
         "price_per_person": 60,
@@ -21,18 +22,20 @@ TOURS = [
         "max_party": 6,
         "image_url": "/images/dolphin.jpg",
         "sort_order": 1,
-        "seo_title": "Dolphin Wildlife Excursion | Merritt Island Dolphin & Manatee Tour",
-        "seo_description": "Book a Merritt Island dolphin and manatee wildlife tour near Cocoa Beach. Explore the Indian River Lagoon with a local Space Coast captain.",
-        "seo_keywords": "Merritt Island dolphin tour, Cocoa Beach dolphin tour, manatee tour Florida, Indian River Lagoon wildlife tour, Space Coast eco tour",
+        "seo_title": "Private Dolphin Wildlife Tour | Merritt Island & Cocoa Beach",
+        "seo_description": "Book a private-style Merritt Island dolphin and manatee wildlife tour near Cocoa Beach, Cape Canaveral, and the Indian River Lagoon.",
+        "seo_keywords": "private dolphin tour Merritt Island, Cocoa Beach dolphin tour, manatee tour, Indian River Lagoon wildlife tour, Space Coast eco tour, exclusive boat tour",
     },
     {
         "slug": "sunset-cruise",
         "name": "Sunset Cruise",
-        "short_description": "Watch the Space Coast sunset over the Indian River Lagoon on a small-group Merritt Island evening cruise.",
+        "short_description": "Private-style Merritt Island sunset cruise near Cocoa Beach with calm water, wildlife, and Space Coast views.",
         "long_description": (
             "End your day with a relaxing Merritt Island sunset cruise on the Indian River Lagoon near "
-            "Cocoa Beach and Cape Canaveral. Bring your camera for golden-hour wildlife, calm water, "
-            "and wide Space Coast sky views. Light snacks and drinks available on request."
+            "Cocoa Beach, Cape Canaveral, and Port Canaveral. Bring your camera for golden-hour wildlife, "
+            "calm water, and wide Space Coast sky views. The boat is limited to 3 to 6 guests, making it "
+            "a personal evening cruise for couples, families, proposals, birthdays, and exclusive groups. "
+            "Ask before booking about private-trip preferences and what can be safely accommodated."
         ),
         "duration_minutes": 90,
         "price_per_person": 60,
@@ -40,18 +43,20 @@ TOURS = [
         "max_party": 6,
         "image_url": "/images/sunset.jpg",
         "sort_order": 2,
-        "seo_title": "Sunset Cruise Merritt Island | Cocoa Beach Evening Boat Tour",
-        "seo_description": "Book a small-group sunset cruise from Merritt Island near Cocoa Beach. Enjoy Indian River Lagoon views, wildlife, and Space Coast evening skies.",
-        "seo_keywords": "Merritt Island sunset cruise, Cocoa Beach sunset boat tour, Space Coast evening cruise, Indian River Lagoon sunset, Cape Canaveral boat tour",
+        "seo_title": "Private Sunset Cruise Merritt Island | Cocoa Beach Boat Tour",
+        "seo_description": "Book a private-style Merritt Island sunset cruise near Cocoa Beach and Cape Canaveral with Indian River Lagoon views and wildlife.",
+        "seo_keywords": "private sunset cruise Merritt Island, Cocoa Beach sunset boat tour, exclusive evening cruise, Indian River Lagoon sunset, Cape Canaveral boat tour",
     },
     {
         "slug": "rocket-launch-viewing",
         "name": "Rocket Launch Viewing",
-        "short_description": "Watch Space Coast rocket launches from the water near Cape Canaveral on a small-group boat tour.",
+        "short_description": "Watch Space Coast rocket launches from the water on a personal boat tour near Cape Canaveral.",
         "long_description": (
             "See launch-day views from the Indian River Lagoon with a local captain who knows the Space Coast. "
             "Rocket launch viewing trips are scheduled around official launch windows and combine open-water "
-            "sightlines, wildlife, and Cape Canaveral stories for a memorable Florida experience."
+            "sightlines, wildlife, and Cape Canaveral stories for a memorable Florida experience. With only "
+            "3 to 6 guests, your group gets a more private, flexible, and exclusive way to watch launches "
+            "near Cape Canaveral, Cocoa Beach, Port Canaveral, and Kennedy Space Center."
         ),
         "duration_minutes": 120,
         "price_per_person": 60,
@@ -59,9 +64,9 @@ TOURS = [
         "max_party": 6,
         "image_url": "/images/rocket.jpg",
         "sort_order": 3,
-        "seo_title": "Rocket Launch Viewing Boat Tour | Cape Canaveral",
-        "seo_description": "Book a Space Coast rocket launch viewing boat tour near Cape Canaveral and Cocoa Beach with Dolphin Island Tours.",
-        "seo_keywords": "Cape Canaveral rocket launch boat tour, Space Coast rocket launch viewing, Cocoa Beach launch tour, Merritt Island rocket launch, Kennedy Space Center boat tour",
+        "seo_title": "Private Rocket Launch Boat Tour | Cape Canaveral",
+        "seo_description": "Book a private-style rocket launch viewing boat tour near Cape Canaveral, Cocoa Beach, Kennedy Space Center, and Merritt Island.",
+        "seo_keywords": "Cape Canaveral rocket launch boat tour, private launch viewing, Space Coast rocket launch, Cocoa Beach launch tour, Kennedy Space Center boat tour",
     },
 ]
 
@@ -91,30 +96,30 @@ SITE_IMAGES = {
 PAGE_DEFAULTS = {
     "home": {
         "hero": "hero",
-        "seo_title": "Merritt Island Dolphin Tours | Cocoa Beach Wildlife & Sunset Cruises",
-        "seo_description": "Small-group Merritt Island boat tours near Cocoa Beach. See dolphins, manatees, birds, sunsets, and Space Coast rocket launches on the Indian River Lagoon.",
-        "seo_keywords": "Merritt Island dolphin tours, Cocoa Beach wildlife tours, Indian River Lagoon boat tour, Space Coast sunset cruise, manatee sightseeing Florida, Cape Canaveral rocket launch boat tour",
+        "seo_title": "Private Merritt Island Dolphin Tours | Cocoa Beach Boat Tours",
+        "seo_description": "Book private and small-group Merritt Island dolphin tours, sunset cruises, wildlife trips, and rocket launch boat tours near Cocoa Beach.",
+        "seo_keywords": "Merritt Island dolphin tours, private boat tour Cocoa Beach, exclusive boat tours, Cape Canaveral rocket launch boat tour, Indian River Lagoon, sunset cruise, manatee tour",
         "hero_eyebrow": "Merritt Island · Cocoa Beach · Space Coast, FL",
-        "hero_title": "Cruise with Dolphins, Sunsets, Rocket Launches, and Smiles",
-        "hero_subtitle": "Small-group Merritt Island boat tours for dolphin watching, sunsets, rocket launch viewing, and easy days on the water.",
+        "hero_title": "Private-Style Dolphin, Sunset, and Rocket Launch Boat Tours",
+        "hero_subtitle": "Personal Merritt Island boat tours for dolphin watching, manatees, sunsets, rocket launch viewing, and exclusive days on the water near Cocoa Beach.",
         "primary_button_label": "Book a tour",
         "primary_button_url": "/tours",
         "secondary_button_label": "What you'll see",
         "secondary_button_url": "#highlights",
         "intro_eyebrow": "What you'll see",
-        "intro_title": "A local Space Coast boat tour built around wildlife.",
-        "section_one_title": "Book a Merritt Island boat tour.",
+        "intro_title": "A personal Space Coast boat tour built around your group.",
+        "section_one_title": "Book a private-style Merritt Island boat tour.",
         "cta_title": "At the Harbortown marina.",
         "cta_body": "Tours leave on time - arrive 15 minutes early.",
     },
     "tours": {
         "hero": "tours_hero",
-        "seo_title": "Merritt Island Boat Tours | Dolphin, Manatee & Sunset Cruises",
-        "seo_description": "Compare Dolphin Island Tours wildlife excursions, dolphin and manatee tours, sunset cruises, and rocket launch viewing trips from Merritt Island, FL.",
-        "seo_keywords": "Merritt Island boat tours, dolphin wildlife excursion, sunset cruise Merritt Island, Cocoa Beach boat tour, Space Coast boat tours, manatee tour Florida",
+        "seo_title": "Private Merritt Island Boat Tours | Dolphin, Sunset & Launch",
+        "seo_description": "Compare private-style Merritt Island boat tours for dolphins, manatees, sunset cruises, exclusive trips, and rocket launch viewing.",
+        "seo_keywords": "private Merritt Island boat tours, exclusive boat tours, Cocoa Beach boat tour, dolphin wildlife excursion, sunset cruise, manatee tour, rocket launch boat",
         "hero_eyebrow": "Pick your trip",
-        "hero_title": "Merritt Island boat tours",
-        "hero_subtitle": "Dolphin, manatee, wildlife, sunset, and rocket launch trips near Cocoa Beach. Small groups, $60 per person, 3 to 6 guests per boat.",
+        "hero_title": "Private-style Merritt Island boat tours",
+        "hero_subtitle": "Dolphin, manatee, wildlife, sunset, and rocket launch trips near Cocoa Beach. Personal tours, $60 per person, 3 to 6 guests per boat.",
     },
     "book": {
         "seo_title": "Book a Tour | Dolphin Island Tours",
@@ -122,16 +127,16 @@ PAGE_DEFAULTS = {
         "hero_title": "Book your Dolphin Island Tours trip.",
     },
     "reviews": {
-        "seo_title": "Guest Reviews | Dolphin Island Tours",
-        "seo_description": "Read verified guest reviews for Dolphin Island Tours across wildlife, sunset, dolphin, and Space Coast boat tours.",
+        "seo_title": "Dolphin Island Tours Reviews | Merritt Island Boat Tours",
+        "seo_description": "Read verified guest reviews for private-style Merritt Island dolphin tours, sunset cruises, wildlife trips, and Space Coast boat tours.",
         "hero_title": "Reviews from every tour.",
         "intro_title": "Guest reviews",
     },
     "about": {
         "hero": "about",
-        "seo_title": "About Dolphin Island Tours | Local Space Coast Boat Captain",
-        "seo_description": "Meet Dolphin Island Tours, a locally owned Merritt Island boat tour company sharing Indian River Lagoon dolphins, manatees, birds, sunsets, and Space Coast stories since 2010.",
-        "seo_keywords": "local Merritt Island boat captain, Dolphin Island Tours about, Space Coast eco tour, Indian River Lagoon wildlife guide, Cocoa Beach dolphin tour company",
+        "seo_title": "About Dolphin Island Tours | Private Space Coast Boat Tours",
+        "seo_description": "Meet Dolphin Island Tours, a locally owned Merritt Island boat tour company offering personal dolphin, sunset, wildlife, and launch trips.",
+        "seo_keywords": "private Space Coast boat tours, local Merritt Island captain, Cocoa Beach dolphin tour company, Indian River Lagoon guide, exclusive boat tour",
         "hero_eyebrow": "About us",
         "hero_title": "About Dolphin Island Tours",
         "intro_title": "Welcome aboard.",
@@ -141,23 +146,23 @@ PAGE_DEFAULTS = {
             "sharing the natural beauty of the Space Coast with others.\n\n"
             "What started as a dream quickly became a mission to give families, couples, and visitors a relaxing "
             "and exciting way to experience dolphins in their natural habitat.\n\n"
-            "Our tours are designed to feel personal, welcoming, and authentic. Whether you're spotting playful "
-            "dolphins, enjoying a breathtaking sunset, or simply relaxing on the water, we want every guest to "
-            "leave with memories they'll never forget.\n\n"
+            "Our tours are designed to feel personal, private, welcoming, and authentic. Whether you're spotting "
+            "playful dolphins, enjoying a breathtaking sunset, planning an exclusive family trip, or simply "
+            "relaxing on the water, we want every guest to leave with memories they'll never forget.\n\n"
             "We are proud to be locally owned and operated, and we can't wait to welcome you aboard."
         ),
-        "section_one_title": "Personal, welcoming, and authentic.",
-        "section_one_body": "Every trip is built around small groups, local knowledge, and a relaxed Space Coast experience.",
+        "section_one_title": "Personal, private-style, and authentic.",
+        "section_one_body": "Every trip is built around small groups, local knowledge, and a relaxed Space Coast experience with no crowded tour boat feel.",
     },
     "contact": {
         "hero": "contact_hero",
-        "seo_title": "Contact Dolphin Island Tours | Merritt Island Boat Tour Questions",
-        "seo_description": "Contact Dolphin Island Tours for Merritt Island dolphin tours, private charters, sunset cruises, rocket launch viewing trips, booking questions, and special requests.",
-        "seo_keywords": "contact Merritt Island boat tour, Dolphin Island Tours phone, Cocoa Beach private boat charter, Space Coast tour questions, rocket launch boat tour booking",
+        "seo_title": "Contact Dolphin Island Tours | Private Boat Tour Questions",
+        "seo_description": "Contact Dolphin Island Tours for private Merritt Island boat tours, dolphin trips, sunset cruises, launch viewing, and custom requests.",
+        "seo_keywords": "contact private boat tour, Merritt Island dolphin tour phone, Cocoa Beach private charter, exclusive boat tour questions, rocket launch boat booking",
         "hero_eyebrow": "Get in touch",
-        "hero_title": "Questions about a tour or charter?",
+        "hero_title": "Questions about a private or custom boat tour?",
         "section_one_title": "Reach us directly",
-        "section_one_body": "We reply to every message within one business day.",
+        "section_one_body": "Ask about private tours, exclusive trips, custom timing, onboard preferences, celebrations, wildlife tours, sunset cruises, and rocket launch viewing.",
         "section_two_title": "Send a message",
         "cta_title": "Thanks - we got it.",
         "cta_body": "Check your inbox for a confirmation. We'll reply within one business day.",
@@ -194,6 +199,33 @@ PAGE_DEFAULTS = {
     },
 }
 
+FAQ_DEFAULTS = [
+    (
+        "Can we book a private or exclusive boat tour?",
+        "Yes. Dolphin Island Tours specializes in small private-style trips for 3 to 6 guests, so your group can enjoy the boat without joining a crowd. Contact us for private tour requests, celebrations, and custom timing.",
+    ),
+    (
+        "Are alcohol, smoking, or special onboard preferences allowed?",
+        "Private trips may be able to accommodate personal preferences when the captain, guests, safety rules, and marina policies allow it. Tell us what you have in mind before booking so we can confirm what is possible for your group.",
+    ),
+    (
+        "What wildlife can we see on a Merritt Island boat tour?",
+        "Guests often see bottlenose dolphins, manatees, pelicans, ospreys, shorebirds, and other Indian River Lagoon wildlife. Sightings vary by season, weather, tide, and conditions.",
+    ),
+    (
+        "Where do Dolphin Island Tours depart from?",
+        "Tours depart from 2700 Harbor Town Drive in Merritt Island, Florida, near Cocoa Beach, Cape Canaveral, Port Canaveral, Kennedy Space Center, and the Florida Space Coast.",
+    ),
+    (
+        "Do you offer sunset cruises near Cocoa Beach?",
+        "Yes. We offer small-group and private-style sunset cruises from Merritt Island on the Indian River Lagoon, close to Cocoa Beach, Cape Canaveral, and Port Canaveral.",
+    ),
+    (
+        "Can we watch a rocket launch from the boat?",
+        "Launch-day boat tours may be available when schedules, launch windows, weather, and water conditions line up. Contact Dolphin Island Tours before booking if rocket launch viewing is your main goal.",
+    ),
+]
+
 
 class Command(BaseCommand):
     help = "Seed Tours and the next 30 days of slots."
@@ -225,6 +257,13 @@ class Command(BaseCommand):
         for t in TOURS:
             obj, created = Tour.objects.get_or_create(slug=t["slug"], defaults=t)
             self.stdout.write(f"{'created' if created else 'exists'}: {obj.name}")
+
+        for index, (question, answer) in enumerate(FAQ_DEFAULTS, start=1):
+            FAQItem.objects.get_or_create(
+                question=question,
+                defaults={"answer": answer, "sort_order": index, "is_active": True},
+            )
+        self.stdout.write(f"Ensured {len(FAQ_DEFAULTS)} FAQ items.")
 
         today = timezone.now().date()
         created_n = 0

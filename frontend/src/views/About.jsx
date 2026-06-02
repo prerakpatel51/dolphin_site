@@ -48,10 +48,10 @@ export default function About() {
         {page.section_one_body && <p className="text-ocean-700 mb-5">{page.section_one_body}</p>}
         <ul className="space-y-3">
           {[
-            ["Wildlife first", "We keep a respectful distance and follow NOAA marine mammal guidelines on every trip."],
-            ["Small groups", "Maximum six guests per tour — no crowds, no chaos, more time on the water."],
-            ["Local roots", "We support Brevard County conservation partners and shop local where we can."],
-            ["Everyone welcome", "Diversity, equality, and inclusion on every boat. Bring grandma, bring the kids."],
+            ["Wildlife first", "We keep a respectful distance and follow NOAA marine mammal guidelines on every dolphin, manatee, and wildlife tour."],
+            ["Private-style trips", "Maximum six guests per tour means no crowded boat, no strangers if your group fills the trip, and more time on the water."],
+            ["Custom requests", "Ask about private tours, exclusive trips, celebrations, custom timing, and onboard preferences before booking."],
+            ["Local roots", "We support Brevard County conservation partners and share real Space Coast knowledge from Merritt Island to Cocoa Beach and Cape Canaveral."],
           ].map(([t, b]) => (
             <li key={t} className="card p-5">
               <h3 className="text-lg font-semibold mb-1">{t}</h3>

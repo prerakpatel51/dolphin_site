@@ -722,11 +722,12 @@ class ContactView(APIView):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def sitemap_xml(request):
-    configured_frontend = settings.FRONTEND_URL.rstrip("/")
-    base = request.build_absolute_uri("/").rstrip("/") if configured_frontend.endswith(":5173") else configured_frontend
+    configured_public_url = getattr(settings, "PUBLIC_SITE_URL", settings.FRONTEND_URL).rstrip("/")
+    base = request.build_absolute_uri("/").rstrip("/") if configured_public_url.endswith(":5173") else configured_public_url
     urls = [
         (f"{base}/", "daily", "1.0"),
         (f"{base}/tours", "daily", "0.9"),
+        (f"{base}/reviews", "weekly", "0.8"),
         (f"{base}/about", "monthly", "0.6"),
         (f"{base}/contact", "monthly", "0.7"),
     ]
@@ -751,8 +752,8 @@ def sitemap_xml(request):
 @permission_classes([AllowAny])
 def robots_txt(request):
     configured = SiteSettings.get().robots_txt.strip()
-    configured_frontend = settings.FRONTEND_URL.rstrip("/")
-    base = request.build_absolute_uri("/").rstrip("/") if configured_frontend.endswith(":5173") else configured_frontend
+    configured_public_url = getattr(settings, "PUBLIC_SITE_URL", settings.FRONTEND_URL).rstrip("/")
+    base = request.build_absolute_uri("/").rstrip("/") if configured_public_url.endswith(":5173") else configured_public_url
     lines = []
     has_sitemap = False
     for line in configured.splitlines():
