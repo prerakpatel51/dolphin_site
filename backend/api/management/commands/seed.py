@@ -119,7 +119,7 @@ PAGE_DEFAULTS = {
         "seo_keywords": "private Merritt Island boat tours, exclusive boat tours, Cocoa Beach boat tour, dolphin wildlife excursion, sunset cruise, manatee tour, rocket launch boat",
         "hero_eyebrow": "Pick your trip",
         "hero_title": "Merritt Island boat tours",
-        "hero_subtitle": "Dolphin, manatee, wildlife, sunset, and rocket launch trips near Cocoa Beach. Personal tours, $60 per person, 3 to 6 guests per boat.",
+        "hero_subtitle": "Dolphin, manatee, wildlife, sunset, and rocket launch trips near Cocoa Beach. Private and small-group tours on the Indian River Lagoon.",
     },
     "book": {
         "seo_title": "Book a Tour | Dolphin Island Tours",

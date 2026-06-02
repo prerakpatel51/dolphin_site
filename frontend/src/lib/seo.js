@@ -39,6 +39,8 @@ export function localBusinessJsonLd(site, image) {
     site.tripadvisor_url,
     site.google_business_url,
   ].filter(Boolean);
+  const reviewCount = Number(site.review_count || 0);
+  const ratingValue = Number(site.average_rating || 0);
 
   return {
     "@type": ["LocalBusiness", "TravelAgency", "TouristInformationCenter"],
@@ -61,11 +63,11 @@ export function localBusinessJsonLd(site, image) {
     "areaServed": businessArea.map(name => ({ "@type": "Place", "name": name })),
     "hasMap": site.maps_url,
     "sameAs": sameAs.length ? sameAs : undefined,
-    "aggregateRating": {
+    "aggregateRating": reviewCount > 0 && ratingValue > 0 ? {
       "@type": "AggregateRating",
       "ratingValue": String(site.average_rating),
       "reviewCount": String(site.review_count),
-    },
+    } : undefined,
   };
 }
 

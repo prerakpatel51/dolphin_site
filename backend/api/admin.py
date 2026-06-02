@@ -516,7 +516,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         ("SEO", {"fields": ("seo_title", "seo_description", "seo_keywords")}),
         ("Contact info", {"fields": ("contact_email", "contact_phone", "address",
                                      "meeting_instructions", "hours", "maps_url", "map_embed_url")}),
-        ("Booking display", {"fields": ("price_blurb", "review_count", "average_rating")}),
+        ("Booking display", {
+            "fields": ("price_blurb",),
+            "description": "Shown on public booking and tour sections. Review count and average rating are calculated from approved guest reviews.",
+        }),
         ("Analytics & ads", {"fields": ("google_analytics_id", "google_tag_manager_id",
                                         "google_ads_id", "google_ads_booking_conversion_label",
                                         "meta_pixel_id"),

@@ -52,7 +52,11 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
   const averageRating = Number(reviewStats.average || 0);
   const siteWithReviewStats = approvedReviewCount > 0
     ? { ...site, review_count: approvedReviewCount, average_rating: averageRating.toFixed(1) }
-    : site;
+    : { ...site, review_count: 0, average_rating: 0 };
+  const priceParts = String(site.price_blurb || "$60 per person").split("·").map(part => part.trim()).filter(Boolean);
+  const primaryPrice = priceParts[0] || "$60 per person";
+  const [priceValue, ...priceLabelParts] = primaryPrice.split(/\s+/);
+  const priceLabel = priceLabelParts.join(" ") || "per person";
   const reviewTourOptions = tours.filter(t => homeReviews.some(r => r.tour_slug === t.slug));
   const filteredHomeReviews = (reviewTourFilter
     ? homeReviews.filter(r => r.tour_slug === reviewTourFilter)
@@ -135,7 +139,7 @@ export default function Home({ initialSite, initialTours = [], initialFeaturedRe
             )}
             <Stat k="2010" v="locally owned" />
             <Stat k="6" v="max guests" />
-            <Stat k="$60" v="per person" />
+            <Stat k={priceValue} v={priceLabel} />
           </div>
         </div>
       </section>

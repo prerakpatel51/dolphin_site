@@ -47,7 +47,10 @@ export default function Tours({ initialTours = [] }) {
         <div className="relative max-w-6xl mx-auto px-4 h-full flex flex-col justify-end pb-8 sm:pb-10">
           <p className="uppercase tracking-[0.25em] sm:tracking-[0.3em] text-ocean-200 text-[10px] sm:text-xs mb-2 sm:mb-3">{page.hero_eyebrow}</p>
           <h1 className="text-4xl sm:text-6xl text-white font-display">{page.hero_title}</h1>
-          <p className="text-ocean-100 mt-2 text-base sm:text-lg max-w-xl">{page.hero_subtitle || site.price_blurb}</p>
+          <p className="text-ocean-100 mt-2 text-base sm:text-lg max-w-xl">{page.hero_subtitle}</p>
+          {site.price_blurb && (
+            <p className="text-ocean-100 mt-3 text-sm sm:text-base font-semibold">{site.price_blurb}</p>
+          )}
         </div>
       </section>
       <div className="max-w-6xl mx-auto px-4 py-10 sm:py-16">
