@@ -10,7 +10,8 @@ RUN python manage.py collectstatic --noinput || true
 RUN adduser --disabled-password --gecos "" appuser \
     && mkdir -p /app/media /app/staticfiles \
     && chown -R appuser:appuser /app
-USER appuser
+RUN chmod +x /app/docker-entrypoint.sh /app/start.sh
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 8000
 ENV GUNICORN_WORKERS=1
 ENV GUNICORN_TIMEOUT=120
