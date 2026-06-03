@@ -21,11 +21,11 @@ export default function Login() {
     e.preventDefault();
     setBusy(true); setErr("");
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       const nextPath = params.get("next");
       const safeNext = (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) ? nextPath : "/";
       nav(safeNext);
-    } catch (e) { setErr(e.message || "Invalid credentials"); }
+    } catch (e) { setErr("Invalid email or password."); }
     finally { setBusy(false); }
   }
 

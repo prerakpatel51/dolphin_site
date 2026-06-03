@@ -345,8 +345,17 @@ class BookingViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
             payment = {"id": f"FAKE-{booking.id}", "order_id": "FAKE-ORDER"}
         else:
             try:
-                payment = charge(source_id, total, data["customer_email"],
-                                 note=f"Dolphin tour {data['slot'].date} {data['slot'].time}")
+                payment = charge(
+                    source_id,
+                    total,
+                    data["customer_email"],
+                    note=f"Dolphin tour {data['slot'].date} {data['slot'].time}",
+                    subtotal_cents=subtotal,
+                    discount_cents=discount,
+                    tax_cents=tax,
+                    tax_rate_percent=tax_rate_percent,
+                    item_name=data["slot"].tour.name,
+                )
             except Exception as e:
                 logger.exception("Payment failed for booking %s.", booking.id)
                 booking.status = "payment_failed"

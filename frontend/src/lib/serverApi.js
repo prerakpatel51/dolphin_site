@@ -75,6 +75,12 @@ export async function metadataForPath(pathname, overrides = {}) {
     title,
     description,
     keywords: overrides.keywords || page.seo_keywords || site.seo_keywords,
+    verification: {
+      google: "N2YGkA7zsA2YGHfr5RFVhDCFnSmQIbn7LI30P6RfEMs",
+    },
+    other: {
+      "google-site-verification": "N2YGkA7zsA2YGHfr5RFVhDCFnSmQIbn7LI30P6RfEMs",
+    },
     alternates: { canonical },
     openGraph: {
       title,

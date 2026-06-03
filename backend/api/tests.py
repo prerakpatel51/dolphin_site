@@ -889,6 +889,30 @@ class BookingAndPromoTests(ApiTestCase):
         audit = ActivityLog.objects.get(action="booking_payment_failed")
         self.assertEqual(audit.metadata["booking_id"], str(booking.id))
 
+    @override_settings(FAKE_PAYMENTS=False)
+    def test_real_payment_sends_itemized_amounts_to_square(self):
+        token = self.token_for()
+        self.tour.price_per_person = 5
+        self.tour.tax_rate_percent = "1.00"
+        self.tour.save(update_fields=["price_per_person", "tax_rate_percent"])
+
+        with patch("api.views.charge", return_value={"id": "sq-payment", "order_id": "sq-order"}) as charge_mock:
+            res = self.post_json(
+                "/api/bookings/create-and-pay/",
+                self.booking_payload(source_id="cnon:card-nonce"),
+                token=token,
+            )
+
+        self.assertEqual(res.status_code, 201, res.content)
+        charge_mock.assert_called_once()
+        args, kwargs = charge_mock.call_args
+        self.assertEqual(args[:3], ("cnon:card-nonce", 1515, TEST_USER_EMAIL))
+        self.assertEqual(kwargs["subtotal_cents"], 1500)
+        self.assertEqual(kwargs["discount_cents"], 0)
+        self.assertEqual(kwargs["tax_cents"], 15)
+        self.assertEqual(str(kwargs["tax_rate_percent"]), "1.00")
+        self.assertEqual(kwargs["item_name"], "Wildlife Tour")
+
     def test_booking_validation_rejects_party_limits_capacity_and_past_slots(self):
         token = self.token_for()
         past = TourSlot.objects.create(
@@ -1061,6 +1085,60 @@ class BookingAndPromoTests(ApiTestCase):
         body = res.json()
         self.assertEqual(body["tax_cents"], 0)
         self.assertEqual(body["total_cents"], 18000)
+
+
+class FakeSquareResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.content = b"{}"
+        self.text = json.dumps(payload)
+
+    def json(self):
+        return self._payload
+
+
+@override_settings(
+    SQUARE_ACCESS_TOKEN="test-token",
+    SQUARE_LOCATION_ID="test-location",
+    SQUARE_ENV="sandbox",
+)
+class SquarePaymentTests(TestCase):
+    def test_charge_creates_taxed_square_order_then_payment(self):
+        from .payments import charge
+
+        def fake_post(url, **kwargs):
+            if url.endswith("/orders"):
+                return FakeSquareResponse(200, {"order": {"id": "square-order-id"}})
+            if url.endswith("/payments"):
+                return FakeSquareResponse(200, {"payment": {"id": "square-payment-id", "order_id": "square-order-id"}})
+            raise AssertionError(f"Unexpected Square URL: {url}")
+
+        with patch("api.payments.requests.post", side_effect=fake_post) as post_mock:
+            payment = charge(
+                "cnon:card-nonce",
+                1515,
+                TEST_USER_EMAIL,
+                note="Dolphin tour 2026-06-04 09:00",
+                subtotal_cents=1500,
+                discount_cents=0,
+                tax_cents=15,
+                tax_rate_percent="1.00",
+                item_name="Dolphin Wildlife Excursion",
+            )
+
+        self.assertEqual(payment, {"id": "square-payment-id", "order_id": "square-order-id"})
+        self.assertEqual(post_mock.call_count, 2)
+        order_call = post_mock.call_args_list[0]
+        payment_call = post_mock.call_args_list[1]
+        self.assertEqual(order_call.args[0], "https://connect.squareupsandbox.com/v2/orders")
+        order_body = order_call.kwargs["json"]["order"]
+        self.assertEqual(order_body["line_items"][0]["base_price_money"]["amount"], 1500)
+        self.assertEqual(order_body["taxes"][0]["percentage"], "1.00")
+        self.assertEqual(order_body["taxes"][0]["scope"], "ORDER")
+        self.assertEqual(payment_call.args[0], "https://connect.squareupsandbox.com/v2/payments")
+        self.assertEqual(payment_call.kwargs["json"]["amount_money"]["amount"], 1515)
+        self.assertEqual(payment_call.kwargs["json"]["order_id"], "square-order-id")
 
 
 class ReviewTests(ApiTestCase):

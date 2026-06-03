@@ -17,12 +17,15 @@ export default async function Page() {
   ]);
 
   return (
-    <Home
-      initialSite={site}
-      initialTours={tours}
-      initialFeaturedReviews={featuredReviews}
-      initialBackupReviews={backupReviews}
-      initialReviewStats={reviewStats}
-    />
+    <>
+      <meta name="google-site-verification" content="N2YGkA7zsA2YGHfr5RFVhDCFnSmQIbn7LI30P6RfEMs" />
+      <Home
+        initialSite={site}
+        initialTours={tours}
+        initialFeaturedReviews={featuredReviews}
+        initialBackupReviews={backupReviews}
+        initialReviewStats={reviewStats}
+      />
+    </>
   );
 }

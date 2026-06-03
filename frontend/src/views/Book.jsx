@@ -9,6 +9,31 @@ import { useSite } from "../lib/site.js";
 import { trackBookingConversion } from "../lib/tracking.js";
 import SEO from "../components/SEO.jsx";
 
+const SQUARE_SDK_URLS = {
+  production: "https://web.squarecdn.com/v1/square.js",
+  sandbox: "https://sandbox.web.squarecdn.com/v1/square.js",
+};
+
+function loadSquareSdk(env) {
+  const src = SQUARE_SDK_URLS[env] || SQUARE_SDK_URLS.sandbox;
+  const existing = document.querySelector("script[data-square-sdk]");
+  if (existing?.src === src) return Promise.resolve();
+  if (existing) {
+    existing.remove();
+    delete window.Square;
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.squareSdk = env || "sandbox";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Square payment script could not be loaded."));
+    document.head.appendChild(script);
+  });
+}
+
 export default function Book() {
   const { slug } = useParams();
   const [params] = useSearchParams();
@@ -101,6 +126,12 @@ export default function Book() {
         return;
       }
       if (!cardEl.current) return;
+      try {
+        await loadSquareSdk(cfg.square_env);
+      } catch (e) {
+        if (!disposed) setCardError(e.message || "Square payment script could not be loaded.");
+        return;
+      }
       const deadline = Date.now() + 8000;
       while (!disposed && !window.Square && Date.now() < deadline) {
         await new Promise(resolve => window.setTimeout(resolve, 100));
@@ -291,7 +322,11 @@ export default function Book() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                 <div>
                   <label className="label !mb-0">Payment card</label>
-                  <p className="text-xs text-ocean-500 mt-1">Use a Square sandbox test card while this site is in test mode.</p>
+                  <p className="text-xs text-ocean-500 mt-1">
+                    {cfg.square_env === "production"
+                      ? "Enter a valid card to complete your secure booking."
+                      : "Use a Square sandbox test card while this site is in test mode."}
+                  </p>
                 </div>
                 <span className="inline-flex w-fit items-center gap-2 rounded-full bg-ocean-50 border border-ocean-100 px-3 py-1 text-xs font-semibold text-ocean-700">
                   Secured by Square
