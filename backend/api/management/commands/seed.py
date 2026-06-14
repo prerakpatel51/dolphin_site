@@ -97,8 +97,8 @@ PAGE_DEFAULTS = {
     "home": {
         "hero": "hero",
         "seo_title": "Private Merritt Island Dolphin Tours | Cocoa Beach Boat Tours",
-        "seo_description": "Book private and small-group Merritt Island dolphin tours, sunset cruises, wildlife trips, and rocket launch boat tours near Cocoa Beach.",
-        "seo_keywords": "Merritt Island dolphin tours, private boat tour Cocoa Beach, exclusive boat tours, Cape Canaveral rocket launch boat tour, Indian River Lagoon, sunset cruise, manatee tour",
+        "seo_description": "Book a private or small-group Merritt Island dolphin tour with Dolphin Island Tours LLC near Cocoa Beach, Cape Canaveral, Port Canaveral, Kennedy Space Center, and the Indian River Lagoon. Choose dolphin watching, manatee and wildlife viewing, sunset cruises, rocket launch viewing, family sightseeing, couples trips, and custom Space Coast boat tours from Harbortown Marina.",
+        "seo_keywords": "private Merritt Island dolphin tours, Cocoa Beach boat tours, Dolphin Island Tours LLC, dolphin watching Merritt Island, Indian River Lagoon wildlife tour, manatee tour Cocoa Beach, sunset cruise Merritt Island, rocket launch boat tour, Cape Canaveral sightseeing, Port Canaveral shore excursion, Kennedy Space Center launch viewing, Space Coast private boat tour",
         "hero_eyebrow": "Merritt Island · Cocoa Beach · Space Coast, FL",
         "hero_title": "Merritt Island Dolphin Tours & Sunset Cruises",
         "hero_subtitle": "Private and small-group boat tours near Cocoa Beach for dolphin watching, manatees, sunset cruises, and rocket launch viewing on the Indian River Lagoon.",
@@ -127,10 +127,11 @@ PAGE_DEFAULTS = {
         "hero_title": "Book your Dolphin Island Tours trip.",
     },
     "reviews": {
-        "seo_title": "Dolphin Island Tours Reviews | Merritt Island Boat Tours",
-        "seo_description": "Read verified guest reviews for Merritt Island dolphin tours, sunset cruises, wildlife trips, and Space Coast boat tours.",
-        "hero_title": "Reviews from every tour.",
-        "intro_title": "Guest reviews",
+        "seo_title": "Dolphin Island Tours Google Reviews | Merritt Island",
+        "seo_description": "Read Google reviews for Dolphin Island Tours LLC and share your own public Google review after a Merritt Island dolphin tour, sunset cruise, wildlife trip, rocket launch viewing tour, or private Space Coast boat tour near Cocoa Beach and Cape Canaveral.",
+        "seo_keywords": "Dolphin Island Tours reviews, Dolphin Island Tours LLC Google reviews, Merritt Island dolphin tour reviews, Cocoa Beach boat tour reviews, Space Coast boat tour reviews, Cape Canaveral tour reviews, private dolphin tour reviews",
+        "hero_title": "Dolphin Island Tours Google reviews.",
+        "intro_title": "Google reviews",
     },
     "about": {
         "hero": "about",
@@ -167,35 +168,10 @@ PAGE_DEFAULTS = {
         "cta_title": "Thanks - we got it.",
         "cta_body": "Check your inbox for a confirmation. We'll reply within one business day.",
     },
-    "login": {
-        "seo_title": "Login | Dolphin Island Tours",
-        "seo_description": "Log in to your Dolphin Island Tours account.",
-        "hero_title": "Log in to your account.",
-    },
-    "signup": {
-        "seo_title": "Sign Up | Dolphin Island Tours",
-        "seo_description": "Create a Dolphin Island Tours account.",
-        "hero_title": "Create your Dolphin Island Tours account.",
-    },
-    "account": {
-        "seo_title": "Account | Dolphin Island Tours",
-        "seo_description": "Manage your Dolphin Island Tours account details and marketing email preferences.",
-        "hero_title": "Account",
-    },
-    "bookings": {
-        "seo_title": "My Bookings | Dolphin Island Tours",
-        "seo_description": "Review your Dolphin Island Tours bookings and receipts.",
-        "hero_title": "My bookings",
-    },
-    "forgot_password": {
-        "seo_title": "Forgot Password | Dolphin Island Tours",
-        "seo_description": "Request a Dolphin Island Tours password reset link.",
-        "hero_title": "Reset your password.",
-    },
-    "reset_password": {
-        "seo_title": "Reset Password | Dolphin Island Tours",
-        "seo_description": "Set a new Dolphin Island Tours account password.",
-        "hero_title": "Set a new password.",
+    "find_booking": {
+        "seo_title": "Find My Booking | Dolphin Island Tours",
+        "seo_description": "Find your Dolphin Island Tours booking with your email and last name, then download your confirmation receipt.",
+        "hero_title": "Find your booking",
     },
 }
 

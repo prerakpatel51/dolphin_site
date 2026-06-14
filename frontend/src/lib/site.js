@@ -8,7 +8,9 @@ let siteCache = DEFAULT_SETTINGS;
 let sitePromise = null;
 
 export function primeSite(initialSite) {
-  if (initialSite) siteCache = { ...DEFAULT_SETTINGS, ...initialSite };
+  if (typeof window !== "undefined" && initialSite) {
+    siteCache = { ...DEFAULT_SETTINGS, ...initialSite };
+  }
 }
 
 function absolutize(src) {
@@ -40,16 +42,24 @@ export function preloadSite() {
   return loadSite().catch(() => DEFAULT_SETTINGS);
 }
 
-export function useSite(pageKey) {
-  const [site, setSite] = useState(siteCache);
+export function useSite(pageKey, initialSite = null) {
+  const [site, setSite] = useState(() => {
+    if (initialSite) return { ...DEFAULT_SETTINGS, ...initialSite };
+    if (typeof window === "undefined") return DEFAULT_SETTINGS;
+    return siteCache;
+  });
 
   useEffect(() => {
     let alive = true;
+    if (initialSite) {
+      siteCache = { ...DEFAULT_SETTINGS, ...initialSite };
+      setSite(siteCache);
+    }
     loadSite().then((data) => {
       if (alive) setSite(data);
     }).catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [initialSite]);
 
   return useMemo(() => {
     const page = { ...(DEFAULT_PAGES[pageKey] || {}), ...(site.pages?.[pageKey] || {}) };

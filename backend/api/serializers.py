@@ -6,9 +6,6 @@ from django.utils import timezone
 import re
 from .models import Tour, TourSlot, Booking, SiteSettings, SiteImage, ContactMessage, PageContent, PageSection, NavigationLink, FAQItem
 
-REVIEW_TITLE_MAX_LENGTH = 80
-REVIEW_BODY_MAX_LENGTH = 1000
-
 
 class TourSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -39,7 +36,8 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
                   "google_analytics_id", "google_tag_manager_id", "google_ads_id",
                   "google_ads_booking_conversion_label", "meta_pixel_id",
                   "facebook_url", "instagram_url", "youtube_url", "tiktok_url",
-                  "tripadvisor_url", "google_business_url", "footer_legal_text")
+                  "tripadvisor_url", "google_business_url", "google_review_url",
+                  "google_reviews_url", "google_reviews_embed_url", "footer_legal_text")
 
 
 class SiteImageSerializer(serializers.ModelSerializer):
@@ -252,103 +250,55 @@ class BookingSerializer(serializers.ModelSerializer):
         return obj.promo_code.code if obj.promo_code else ""
 
 
-from .models import Review
+class BookingLookupResultSerializer(serializers.ModelSerializer):
+    """Trimmed booking view for the public email + last name lookup.
 
-
-class ReviewSerializer(serializers.ModelSerializer):
-    tour_slug = serializers.SlugRelatedField(slug_field="slug", source="tour", read_only=True)
-    tour_name = serializers.CharField(source="tour.name", read_only=True)
-    mine = serializers.SerializerMethodField()
-    pending = serializers.SerializerMethodField()
-    verified_guest = serializers.SerializerMethodField()
-    reviewer_type = serializers.SerializerMethodField()
-    helpful_by_me = serializers.SerializerMethodField()
-    photo_url = serializers.SerializerMethodField()
-    photo_urls = serializers.SerializerMethodField()
+    Excludes phone, traveler details, and special requests so the weak
+    email + last-name gate cannot expose extra PII to a guesser. Enough
+    fields remain to display the booking and download the receipt.
+    """
+    slot = TourSlotSerializer(read_only=True)
+    promo_code_label = serializers.SerializerMethodField()
+    customer_last_name = serializers.SerializerMethodField()
 
     class Meta:
-        model = Review
-        fields = ("id", "tour_slug", "tour_name", "author_name", "rating", "title", "body",
-                  "photo_url", "photo_urls", "reply_text", "helpful_count", "is_featured",
-                  "created_at", "mine", "pending", "verified_guest", "reviewer_type", "helpful_by_me")
+        model = Booking
+        fields = ("id", "slot", "party_size", "price_per_person_cents", "tax_cents",
+                  "total_cents", "discount_cents", "promo_code_label", "status",
+                  "customer_name", "customer_email", "customer_last_name", "created_at")
+        read_only_fields = fields
 
-    def get_mine(self, obj):
-        req = self.context.get("request")
-        return bool(req and req.user.is_authenticated and obj.user_id == req.user.id)
+    def get_promo_code_label(self, obj):
+        return obj.promo_code.code if obj.promo_code else ""
 
-    def get_pending(self, obj):
-        return not obj.is_approved
-
-    def get_verified_guest(self, obj):
-        return bool(obj.booking_id)
-
-    def get_reviewer_type(self, obj):
-        if obj.booking_id:
-            return "verified_guest"
-        if obj.user_id:
-            return "registered_user"
-        return "anonymous"
-
-    def get_helpful_by_me(self, obj):
-        annotated = getattr(obj, "helpful_by_me_value", None)
-        if annotated is not None:
-            return bool(annotated)
-        req = self.context.get("request")
-        if not req:
-            return False
-        if req.user.is_authenticated:
-            return obj.helpful_votes.filter(user=req.user).exists()
-        session_key = req.session.session_key
-        return bool(session_key and obj.helpful_votes.filter(session_key=session_key).exists())
-
-    def get_photo_url(self, obj):
-        urls = self.get_photo_urls(obj)
-        return urls[0] if urls else ""
-
-    def get_photo_urls(self, obj):
-        urls = []
-        if obj.photo:
-            urls.append(obj.photo.url)
-        photos = getattr(obj, "photos", None)
-        if photos is not None:
-            urls.extend(photo.image.url for photo in photos.all() if photo.image)
-        return urls
+    def get_customer_last_name(self, obj):
+        parts = (obj.customer_name or "").strip().split()
+        return parts[-1] if parts else ""
 
 
-class ReviewCreateSerializer(serializers.ModelSerializer):
-    tour_slug = serializers.CharField(required=False, allow_blank=True, write_only=True)
+class BookingLookupSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    last_name = serializers.CharField(max_length=80)
 
-    class Meta:
-        model = Review
-        fields = ("tour_slug", "author_name", "author_email", "rating", "title", "body", "photo")
-        extra_kwargs = {
-            "title": {"max_length": REVIEW_TITLE_MAX_LENGTH},
-            "body": {"max_length": REVIEW_BODY_MAX_LENGTH},
-            "photo": {"required": False},
-        }
-
-    def validate_rating(self, v):
-        if v < 1 or v > 5:
-            raise serializers.ValidationError("Rating must be 1–5.")
-        return v
-
-    def validate_body(self, v):
-        if len(v) > REVIEW_BODY_MAX_LENGTH:
-            raise serializers.ValidationError(f"Review must be {REVIEW_BODY_MAX_LENGTH} characters or fewer.")
-        return v
-
-    def create(self, validated_data):
-        slug = validated_data.pop("tour_slug", "")
-        tour = None
-        if slug:
-            try:
-                tour = Tour.objects.get(slug=slug)
-            except Tour.DoesNotExist:
-                pass
-        return Review.objects.create(tour=tour, **validated_data)
+    def validate_last_name(self, value):
+        cleaned = re.sub(r"\s+", " ", value or "").strip()
+        if len(cleaned) < 2:
+            raise serializers.ValidationError("Enter the booking contact's last name.")
+        return cleaned
 
 
 class PromoValidateSerializer(serializers.Serializer):
     code = serializers.CharField()
     email = serializers.EmailField(required=False, allow_blank=True)
     subtotal_cents = serializers.IntegerField()
+
+    def validate_code(self, value):
+        cleaned = re.sub(r"\s+", "", value or "").strip().upper()
+        if not cleaned:
+            raise serializers.ValidationError("Enter a promo code.")
+        return cleaned
+
+    def validate_subtotal_cents(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Promo codes require a positive booking subtotal.")
+        return value

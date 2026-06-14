@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, pageKeyFromPath } from "./siteData.js";
 
-const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinsite-production.up.railway.app";
+const PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://dolphinislandtours.com";
 const RAW_API_BASE = process.env.BACKEND_UPSTREAM
   ? `http://${process.env.BACKEND_UPSTREAM}/api`
   : process.env.INTERNAL_API_BASE || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
@@ -52,16 +52,6 @@ export async function getTourDates(slug) {
   return dates?.dates || {};
 }
 
-export async function getReviews(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  const reviews = await getJson(`/reviews/${query ? `?${query}` : ""}`);
-  return reviews?.results || reviews || [];
-}
-
-export async function getAllReviewStats() {
-  return await getJson("/reviews/stats/") || { count: 0, average: 0 };
-}
-
 export async function metadataForPath(pathname, overrides = {}) {
   const site = await getSite();
   const pageKey = pageKeyFromPath(pathname);
@@ -77,9 +67,6 @@ export async function metadataForPath(pathname, overrides = {}) {
     keywords: overrides.keywords || page.seo_keywords || site.seo_keywords,
     verification: {
       google: "N2YGkA7zsA2YGHfr5RFVhDCFnSmQIbn7LI30P6RfEMs",
-    },
-    other: {
-      "google-site-verification": "N2YGkA7zsA2YGHfr5RFVhDCFnSmQIbn7LI30P6RfEMs",
     },
     alternates: { canonical },
     openGraph: {

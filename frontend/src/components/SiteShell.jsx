@@ -1,37 +1,25 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { useAuth } from "../lib/auth.jsx";
 import { imageFrom, useSite, pageKeyFromPath } from "../lib/site.js";
 import { initMarketingTags, trackPageView } from "../lib/tracking.js";
 import PageSections from "./PageSections.jsx";
 
 export default function SiteShell({ children }) {
-  const { user, logout } = useAuth();
   const { site } = useSite("home");
-  const nav = useNavigate();
   const pathname = usePathname() || "/";
   const { page: currentPage } = useSite(pageKeyFromPath(pathname));
   const logo = imageFrom(site, "logo", "/images/logo.png");
   const [open, setOpen] = useState(false);
-  const footerLinks = visibleLinks(site.navigation?.footer || [], user);
+  const footerLinks = visibleLinks(site.navigation?.footer || []);
 
   useEffect(() => { initMarketingTags(site); }, [site]);
   useEffect(() => {
     trackPageView(site, `${pathname}${window.location.search}`);
   }, [site, pathname]);
   useEffect(() => { setOpen(false); }, [pathname]);
-
-  async function handleLogout() {
-    try {
-      await logout();
-      nav("/");
-    } catch (err) {
-      console.error("Logout failed", err);
-    }
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-ocean-50 text-ocean-950">
@@ -44,20 +32,9 @@ export default function SiteShell({ children }) {
           <nav className="hidden md:flex items-center gap-1 lg:gap-3 text-sm">
             <NavItem to="/tours">Tours</NavItem>
             <NavItem to="/reviews">Reviews</NavItem>
+            <NavItem to="/find-booking">Find Booking</NavItem>
             <NavItem to="/about">About</NavItem>
             <NavItem to="/contact">Contact</NavItem>
-            {user ? (
-              <>
-                <NavItem to="/bookings">My Bookings</NavItem>
-                <NavItem to="/account">Account</NavItem>
-                <button onClick={handleLogout} className="text-ocean-700 hover:text-ocean-900 px-2">Logout</button>
-              </>
-            ) : (
-              <>
-                <NavItem to="/login">Login</NavItem>
-                <Link to="/signup" className="btn-primary !py-2 !px-4 text-sm">Sign up</Link>
-              </>
-            )}
           </nav>
           <button onClick={() => setOpen(o => !o)} aria-label="Menu"
             className="md:hidden w-10 h-10 rounded-full hover:bg-ocean-100 flex items-center justify-center">
@@ -73,24 +50,9 @@ export default function SiteShell({ children }) {
             <nav className="px-4 py-4 flex flex-col gap-1 text-base">
               <MItem to="/tours" onClick={() => setOpen(false)}>Tours</MItem>
               <MItem to="/reviews" onClick={() => setOpen(false)}>Reviews</MItem>
+              <MItem to="/find-booking" onClick={() => setOpen(false)}>Find Booking</MItem>
               <MItem to="/about" onClick={() => setOpen(false)}>About</MItem>
               <MItem to="/contact" onClick={() => setOpen(false)}>Contact</MItem>
-              {user ? (
-                <>
-                  <MItem to="/bookings" onClick={() => setOpen(false)}>My Bookings</MItem>
-                  <MItem to="/account" onClick={() => setOpen(false)}>Account</MItem>
-                  <button onClick={async () => {
-                    setOpen(false);
-                    await handleLogout();
-                  }}
-                    className="text-left px-4 py-3 rounded-xl text-ocean-700 hover:bg-ocean-50">Logout</button>
-                </>
-              ) : (
-                <>
-                  <MItem to="/login" onClick={() => setOpen(false)}>Login</MItem>
-                  <Link to="/signup" onClick={() => setOpen(false)} className="btn-primary mt-2 text-base">Sign up</Link>
-                </>
-              )}
             </nav>
           </div>
         )}
@@ -138,12 +100,10 @@ export default function SiteShell({ children }) {
   );
 }
 
-function visibleLinks(links, user) {
-  return links.filter(link => {
-    if (link.visibility === "authenticated") return Boolean(user);
-    if (link.visibility === "anonymous") return !user;
-    return true;
-  });
+function visibleLinks(links) {
+  // Customer accounts were removed; only show links that aren't gated to a
+  // logged-in/anonymous customer state.
+  return links.filter(link => link.visibility !== "authenticated");
 }
 
 function FooterLink({ link }) {

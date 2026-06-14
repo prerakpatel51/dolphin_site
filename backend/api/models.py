@@ -153,8 +153,8 @@ class Tour(models.Model):
 
     # SEO
     seo_title = models.CharField(max_length=70, blank=True, help_text="Browser tab + Google. Best ≤60 chars.")
-    seo_description = models.CharField(max_length=180, blank=True, help_text="Google snippet. Best 140–160 chars.")
-    seo_keywords = models.CharField(max_length=240, blank=True, help_text="Comma-separated.")
+    seo_description = models.TextField(blank=True, help_text="Search description. Supports long copy up to about 2000 words.")
+    seo_keywords = models.TextField(blank=True, help_text="Comma-separated keywords. Supports long lists up to about 2000 words.")
     og_image = models.ImageField(upload_to="tours/og/", blank=True, null=True,
                                  help_text="Social share preview. 1200×630.")
 
@@ -219,9 +219,9 @@ class SiteSettings(models.Model):
     site_name = models.CharField(max_length=120, default="Dolphin Island Tours")
     tagline = models.CharField(max_length=240, default="Creating unforgettable dolphin encounters on Florida's Space Coast.")
     seo_title = models.CharField(max_length=70, default="Dolphin Island Tours | Merritt Island Dolphin & Sunset Boat Tours")
-    seo_description = models.CharField(max_length=180,
+    seo_description = models.TextField(
         default="Book small-group dolphin, manatee, wildlife, sunset, and rocket launch boat tours from Merritt Island near Cocoa Beach and Cape Canaveral.")
-    seo_keywords = models.CharField(max_length=240,
+    seo_keywords = models.TextField(
         default="Merritt Island dolphin tours, Cocoa Beach dolphin tour, Cape Canaveral boat tour, Space Coast wildlife tour, Indian River Lagoon tour, Florida sunset cruise")
     contact_email = models.EmailField(default="lauren@dolphinislandtours.com")
     contact_phone = models.CharField(max_length=40, blank=True, default="321-390-0176")
@@ -254,6 +254,24 @@ class SiteSettings(models.Model):
     tiktok_url = models.URLField(blank=True)
     tripadvisor_url = models.URLField(blank=True)
     google_business_url = models.URLField(blank=True)
+    google_review_url = models.URLField(
+        blank=True,
+        max_length=500,
+        default="https://g.page/r/CehBxKNRm1TfEBM/review",
+        help_text="Direct Google review/write-review link. Paste the Business Profile review link here if available.",
+    )
+    google_reviews_url = models.URLField(
+        blank=True,
+        max_length=500,
+        default="https://share.google/Ig5FtVIQGXBWMUIGC",
+        help_text="Public Google reviews link.",
+    )
+    google_reviews_embed_url = models.URLField(
+        blank=True,
+        max_length=500,
+        default="https://www.google.com/maps?q=Dolphin+Island+Tours+LLC+2700+Harbortown+Dr+Merritt+Island+FL+32952&output=embed",
+        help_text="Embeddable Google Maps/Business Profile URL shown on the reviews page.",
+    )
     footer_legal_text = models.CharField(
         max_length=240,
         blank=True,
@@ -287,12 +305,7 @@ class PageContent(models.Model):
         ("reviews", "Reviews"),
         ("about", "About"),
         ("contact", "Contact"),
-        ("login", "Login"),
-        ("signup", "Sign up"),
-        ("account", "Account"),
-        ("bookings", "My bookings"),
-        ("forgot_password", "Forgot password"),
-        ("reset_password", "Reset password"),
+        ("find_booking", "Find booking"),
     ]
     page = models.CharField(max_length=32, choices=PAGE_CHOICES, unique=True)
     hero_image = models.ForeignKey(
@@ -304,8 +317,8 @@ class PageContent(models.Model):
         help_text="Optional hero image slot. Upload/replace the image under Site images.",
     )
     seo_title = models.CharField(max_length=70, blank=True)
-    seo_description = models.CharField(max_length=180, blank=True)
-    seo_keywords = models.CharField(max_length=240, blank=True)
+    seo_description = models.TextField(blank=True)
+    seo_keywords = models.TextField(blank=True)
     hero_eyebrow = models.CharField(max_length=120, blank=True)
     hero_title = models.CharField(max_length=180, blank=True)
     hero_subtitle = models.TextField(blank=True)
@@ -584,7 +597,7 @@ class Booking(models.Model):
         ("refunded", "Refunded"),
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bookings")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="bookings")
     slot = models.ForeignKey(TourSlot, on_delete=models.PROTECT, related_name="bookings")
     party_size = models.PositiveSmallIntegerField()
     price_per_person_cents = models.PositiveIntegerField()

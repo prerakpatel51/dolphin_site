@@ -232,8 +232,12 @@ SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
 SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID", "")
 SQUARE_APP_ID = os.getenv("SQUARE_APP_ID", "")
 FAKE_PAYMENTS = env_bool("FAKE_PAYMENTS", default=False)
-if FAKE_PAYMENTS and not DEBUG:
-    raise ImproperlyConfigured("FAKE_PAYMENTS cannot be enabled when DJANGO_DEBUG=0.")
+ALLOW_FAKE_PAYMENTS_IN_PRODUCTION = env_bool("ALLOW_FAKE_PAYMENTS_IN_PRODUCTION", default=False)
+if FAKE_PAYMENTS and not DEBUG and not ALLOW_FAKE_PAYMENTS_IN_PRODUCTION:
+    raise ImproperlyConfigured(
+        "FAKE_PAYMENTS cannot be enabled when DJANGO_DEBUG=0 unless "
+        "ALLOW_FAKE_PAYMENTS_IN_PRODUCTION=1 is also set."
+    )
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 SMTP_HOST = os.getenv("SMTP_HOST", "")

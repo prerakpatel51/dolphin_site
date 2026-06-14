@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { api } from "../lib/api.js";
-import { useAuth } from "../lib/auth.jsx";
 import { useSite } from "../lib/site.js";
 import { trackBookingConversion } from "../lib/tracking.js";
+import { bookingDate, confirmationDataUrl, confirmationFilename, downloadBookingConfirmation } from "../lib/bookingReceipt.js";
 import SEO from "../components/SEO.jsx";
 
 const SQUARE_SDK_URLS = {
@@ -34,16 +34,23 @@ function loadSquareSdk(env) {
   });
 }
 
+function centsFromDollars(value) {
+  return Math.round(Number(value || 0) * 100);
+}
+
+function moneyFromCents(cents = 0) {
+  return `$${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
 export default function Book() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const slotId = params.get("slot");
-  const { user, loading } = useAuth();
-  const { site } = useSite("tours");
-  const nav = useNavigate();
+  const { site, page } = useSite("book");
 
   const [pending, setPending] = useState(null);
   const [pendingMissing, setPendingMissing] = useState(false);
+  const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [form, setForm] = useState({
     customer_name: "",
     customer_email: "",
@@ -80,12 +87,6 @@ export default function Book() {
   const loadError = !slotId
     ? "Missing departure."
     : bookingQuery.error?.message || "";
-
-  useEffect(() => {
-    if (user) setForm(f => ({ ...f,
-      customer_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username,
-      customer_email: user.email, customer_phone: user.phone || "" }));
-  }, [user]);
 
   useEffect(() => {
     if (!slot) {
@@ -173,19 +174,6 @@ export default function Book() {
     };
   }, [cfg, slot?.id]);
 
-  if (loading) return <div className="p-10">Loading...</div>;
-  if (!user) return (
-    <div className="max-w-md mx-auto p-10 text-center">
-      <SEO
-        title="Login to Book | Dolphin Island Tours"
-        description="Log in before completing your Dolphin Island Tours booking."
-        canonical={`/book/${slug}`}
-        robots="noindex, follow"
-      />
-      <p className="mb-4">Please log in to book.</p>
-      <Link className="btn-primary" to={`/login?next=/book/${slug}?slot=${slotId}`}>Login</Link>
-    </div>
-  );
   if (loadError) return (
     <div className="max-w-md mx-auto px-4 py-16 text-center">
       <SEO
@@ -205,12 +193,18 @@ export default function Book() {
   const price = tour.price_per_person || cfg.price_per_person;
   const partySize = pending?.party_size || 0;
   const travelers = pending?.travelers || [];
-  const subtotal = price * partySize;
-  const discount = promo?.valid ? Math.round((promo.discount_cents || 0) / 100) : 0;
-  const taxableTotal = Math.max(0, subtotal - discount);
+  const priceCents = centsFromDollars(price);
+  const subtotalCents = priceCents * partySize;
+  const normalizedEmail = form.customer_email.trim().toLowerCase();
+  const promoIsCurrent = promo?.valid
+    && promo.applied_subtotal_cents === subtotalCents
+    && (promo.applied_email || "") === normalizedEmail;
+  const activePromo = promoIsCurrent ? promo : null;
+  const discountCents = activePromo ? Number(activePromo.discount_cents || 0) : 0;
+  const taxableTotalCents = Math.max(0, subtotalCents - discountCents);
   const taxRate = Number(tour.tax_rate_percent ?? 0);
-  const estimatedTax = Math.round(taxableTotal * taxRate) / 100;
-  const total = taxableTotal + estimatedTax;
+  const estimatedTaxCents = Math.round(taxableTotalCents * taxRate / 100);
+  const totalCents = taxableTotalCents + estimatedTaxCents;
   const canSubmit = !pendingMissing && partySize > 0 && travelers.length === partySize
     && partySize <= slot.seats_remaining && form.customer_name && form.customer_email
     && /^\d{10}$/.test(form.customer_phone);
@@ -220,11 +214,11 @@ export default function Book() {
     try {
       const r = await api.validatePromo({
         code: promoInput.trim(),
-        email: form.customer_email,
-        subtotal_cents: subtotal * 100,
+        email: normalizedEmail,
+        subtotal_cents: subtotalCents,
       });
       if (!r.valid) { setPromo(null); setPromoErr(r.reason || "Invalid code."); }
-      else setPromo(r);
+      else setPromo({ ...r, applied_email: normalizedEmail, applied_subtotal_cents: subtotalCents });
     } catch (e) { setPromoErr(e.message); }
     finally { setPromoBusy(false); }
   }
@@ -250,20 +244,60 @@ export default function Book() {
         travelers,
         ...form,
         source_id,
-        promo_code: promo?.valid ? promo.code : "",
+        promo_code: activePromo ? activePromo.code : "",
       });
       sessionStorage.removeItem(`pendingBooking:${slot.id}`);
       trackBookingConversion(site, booking);
-      nav(`/bookings?just=${booking.id}`);
+      downloadBookingConfirmation(booking, site);
+      setConfirmedBooking(booking);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
+  }
+
+  if (confirmedBooking) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
+        <SEO
+          title="Booking Confirmed | Dolphin Island Tours"
+          description="Your Dolphin Island Tours booking is confirmed."
+          canonical={`/book/${slug}`}
+          robots="noindex, follow"
+        />
+        <div className="card p-6 sm:p-8 bg-emerald-50 border-emerald-200">
+          <p className="uppercase tracking-[0.18em] text-emerald-700 text-xs mb-2">Booking confirmed</p>
+          <h1 className="text-3xl sm:text-4xl mb-3">You are booked.</h1>
+          <p className="text-ocean-800">
+            A confirmation email was sent to {confirmedBooking.customer_email}. Your receipt download should start automatically.
+          </p>
+          <div className="mt-6 rounded-2xl bg-white border border-emerald-100 p-4 sm:p-5 space-y-3 text-sm">
+            <SummaryRow label="Confirmation #" value={confirmedBooking.id} />
+            <SummaryRow label="Tour" value={confirmedBooking.slot.tour?.name} />
+            <SummaryRow label="Date" value={bookingDate(confirmedBooking)} />
+            <SummaryRow label="Time" value={confirmedBooking.slot.time.slice(0, 5)} />
+            <SummaryRow label="Guests" value={String(confirmedBooking.party_size)} />
+            <SummaryRow label="Total paid" value={`$${(Number(confirmedBooking.total_cents || 0) / 100).toFixed(2)}`} />
+          </div>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <a
+              className="btn-primary text-center"
+              href={confirmationDataUrl(confirmedBooking, site)}
+              download={confirmationFilename(confirmedBooking)}
+            >
+              Download receipt again
+            </a>
+            <Link className="btn-ghost text-center" to="/tours">Book another tour</Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
       <SEO
-        title={`Book ${tour.name || "a Tour"} | Dolphin Island Tours`}
-        description="Complete your Dolphin Island Tours booking securely with traveler details, promo code, and payment."
+        title={page.seo_title || `Book ${tour.name || "a Tour"} | Dolphin Island Tours`}
+        description={page.seo_description || "Complete your Dolphin Island Tours booking securely with traveler details, promo code, and payment."}
+        keywords={page.seo_keywords}
         canonical={`/book/${slug}`}
         robots="noindex, follow"
       />
@@ -293,7 +327,20 @@ export default function Book() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <Field id="booking-name" label="Full name" value={form.customer_name} onChange={v => setForm(f => ({ ...f, customer_name: v }))} required />
-            <Field id="booking-email" label="Email" type="email" value={form.customer_email} onChange={v => setForm(f => ({ ...f, customer_email: v }))} required />
+            <Field
+              id="booking-email"
+              label="Email"
+              type="email"
+              value={form.customer_email}
+              onChange={v => {
+                if (promo) {
+                  setPromo(null);
+                  setPromoErr("Promo code removed. Apply it again after confirming the booking email.");
+                }
+                setForm(f => ({ ...f, customer_email: v }));
+              }}
+              required
+            />
             <Field
               id="booking-phone"
               label="Phone"
@@ -354,13 +401,13 @@ export default function Book() {
 
           <div className="border-t border-ocean-100 pt-5">
             <label className="label" htmlFor="booking-promo-code">Promo code (optional)</label>
-            {promo?.valid ? (
+            {activePromo ? (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3">
                 <div>
-                  <div className="font-mono font-bold text-emerald-900">{promo.code}</div>
+                  <div className="font-mono font-bold text-emerald-900">{activePromo.code}</div>
                   <div className="text-xs text-emerald-700">
-                    {promo.kind === "percent" ? `${promo.percent_off}% off` : `$${(promo.amount_off_cents/100).toFixed(2)} off`}
-                    {" "}— saved ${discount}
+                    {activePromo.kind === "percent" ? `${activePromo.percent_off}% off` : moneyFromCents(activePromo.amount_off_cents)}
+                    {" "}— saved {moneyFromCents(discountCents)}
                   </div>
                 </div>
                 <button type="button" onClick={clearPromo} className="text-emerald-800 underline text-sm">Remove</button>
@@ -370,7 +417,7 @@ export default function Book() {
                 <input id="booking-promo-code" className="input flex-1 uppercase tracking-wider min-w-0" value={promoInput}
                   onChange={e => setPromoInput(e.target.value.toUpperCase())}
                   placeholder="E.g. DI1-AB23CD" />
-                <button type="button" disabled={!promoInput || promoBusy}
+                <button type="button" disabled={!promoInput.trim() || promoBusy || subtotalCents <= 0 || !form.customer_email.trim()}
                   onClick={applyPromo}
                   className="btn-ghost disabled:opacity-50">{promoBusy ? "…" : "Apply"}</button>
               </div>
@@ -380,11 +427,11 @@ export default function Book() {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-ocean-100 pt-5">
             <div>
-              <div className="text-ocean-600 text-sm">{partySize || 0} × ${price}{discount > 0 && ` − $${discount} off`}</div>
-              <div className="text-3xl font-display">${total.toFixed(2)}</div>
+              <div className="text-ocean-600 text-sm">{partySize || 0} × {moneyFromCents(priceCents)}{discountCents > 0 && ` - ${moneyFromCents(discountCents)} off`}</div>
+              <div className="text-3xl font-display">{moneyFromCents(totalCents)}</div>
             </div>
             <button disabled={!canSubmit || busy || (!cfg.fake_payments && !cardReady)} className="btn-primary disabled:opacity-50 w-full sm:w-auto">
-              {busy ? "Processing…" : cfg.fake_payments ? `Pretend to pay $${total.toFixed(2)}` : `Pay $${total.toFixed(2)}`}
+              {busy ? "Processing…" : cfg.fake_payments ? `Pretend to pay ${moneyFromCents(totalCents)}` : `Pay ${moneyFromCents(totalCents)}`}
             </button>
           </div>
           {error && <p className="text-red-600">{error}</p>}
@@ -416,12 +463,12 @@ export default function Book() {
           </div>
 
           <div className="border-t border-ocean-100 mt-5 pt-5 space-y-2 text-sm">
-            <SummaryRow label={`${partySize || 0} × $${price}`} value={`$${subtotal}`} />
-            {discount > 0 && <SummaryRow label="Promo discount" value={`-$${discount}`} />}
-            <SummaryRow label={`Tax${taxRate > 0 ? ` (${taxRate.toFixed(2)}%)` : ""}`} value={`$${estimatedTax.toFixed(2)}`} />
+            <SummaryRow label={`${partySize || 0} × ${moneyFromCents(priceCents)}`} value={moneyFromCents(subtotalCents)} />
+            {discountCents > 0 && <SummaryRow label="Promo discount" value={`-${moneyFromCents(discountCents)}`} />}
+            <SummaryRow label={`Tax${taxRate > 0 ? ` (${taxRate.toFixed(2)}%)` : ""}`} value={moneyFromCents(estimatedTaxCents)} />
             <div className="flex items-center justify-between pt-3 border-t border-ocean-100">
               <span className="font-semibold">Total due</span>
-              <span className="text-3xl font-display">${total.toFixed(2)}</span>
+              <span className="text-3xl font-display">{moneyFromCents(totalCents)}</span>
             </div>
           </div>
         </aside>

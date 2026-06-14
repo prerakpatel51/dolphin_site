@@ -3,6 +3,7 @@ import os
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
@@ -93,14 +94,6 @@ class ApiTestCase(TestCase):
         if token:
             headers["HTTP_AUTHORIZATION"] = f"Bearer {token}"
         return self.client.get(path, **headers)
-
-    def token_for(self, email=TEST_USER_EMAIL, password="StrongPass123"):
-        res = self.post_json("/api/auth/login/", {"email": email, "password": password})
-        self.assertEqual(res.status_code, 200, res.content)
-        self.assertEqual(res.json(), {"ok": True})
-        self.assertTrue(res.cookies["access_token"]["httponly"])
-        self.assertTrue(res.cookies["refresh_token"]["httponly"])
-        return res.cookies["access_token"].value
 
     def booking_payload(self, **overrides):
         payload = {
@@ -331,14 +324,22 @@ class PublicSiteAndSeoTests(ApiTestCase):
         root_sitemap = self.client.get("/sitemap.xml")
         robots = self.client.get("/api/robots.txt")
         root_robots = self.client.get("/robots.txt")
+        sitemap_head = self.client.head("/api/sitemap.xml")
+        root_sitemap_head = self.client.head("/sitemap.xml")
+        robots_head = self.client.head("/api/robots.txt")
+        root_robots_head = self.client.head("/robots.txt")
 
         self.assertEqual(sitemap.status_code, 200)
         self.assertEqual(root_sitemap.status_code, 200)
+        self.assertEqual(sitemap_head.status_code, 200)
+        self.assertEqual(root_sitemap_head.status_code, 200)
         self.assertContains(sitemap, "https://example.test/tours/wildlife")
         self.assertContains(root_sitemap, "<changefreq>weekly</changefreq>")
         self.assertNotContains(sitemap, "inactive")
         self.assertEqual(robots.status_code, 200)
         self.assertEqual(root_robots.status_code, 200)
+        self.assertEqual(robots_head.status_code, 200)
+        self.assertEqual(root_robots_head.status_code, 200)
         self.assertIn("text/plain", robots["Content-Type"])
         self.assertContains(robots, "User-agent")
         self.assertContains(root_robots, "Sitemap:")
@@ -516,213 +517,14 @@ class PublicSiteAndSeoTests(ApiTestCase):
 
 
 class AuthContactAndSlotSafetyTests(ApiTestCase):
-    def test_cookie_authenticated_writes_require_csrf_token(self):
-        client = Client(enforce_csrf_checks=True)
-        login = client.post(
-            "/api/auth/login/",
-            data=json.dumps({"email": TEST_USER_EMAIL, "password": "StrongPass123"}),
-            content_type="application/json",
-        )
-        self.assertEqual(login.status_code, 200, login.content)
-        self.assertIn("csrftoken", client.cookies)
-
-        blocked = client.patch(
-            "/api/auth/me/",
-            data=json.dumps({"phone": "5550001111"}),
-            content_type="application/json",
-        )
-        allowed = client.patch(
-            "/api/auth/me/",
-            data=json.dumps({"phone": "5550001111"}),
-            content_type="application/json",
-            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
-        )
-
-        self.assertEqual(blocked.status_code, 403)
-        self.assertEqual(allowed.status_code, 200, allowed.content)
-
-    def test_cookie_authenticated_logout_requires_csrf_and_clears_session(self):
-        client = Client(enforce_csrf_checks=True)
-        login = client.post(
-            "/api/auth/login/",
-            data=json.dumps({"email": TEST_USER_EMAIL, "password": "StrongPass123"}),
-            content_type="application/json",
-        )
-        self.assertEqual(login.status_code, 200, login.content)
-        self.assertIn("csrftoken", client.cookies)
-
-        blocked = client.post("/api/auth/logout/")
-        allowed = client.post(
-            "/api/auth/logout/",
-            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
-        )
-
-        self.assertEqual(blocked.status_code, 403)
-        self.assertEqual(allowed.status_code, 204, allowed.content)
-        self.assertEqual(client.get("/api/auth/me/").status_code, 401)
-
-    def test_signup_login_me_update_and_delete_account(self):
-        signup = self.post_json("/api/auth/signup/", {
-            "email": "new@example.com",
-            "password": "StrongPass123",
-            "first_name": "New",
-            "last_name": "Customer",
-            "phone": "5550009999",
-            "accepts_marketing": True,
-        })
-        self.assertEqual(signup.status_code, 201, signup.content)
-
-        token = self.token_for("new@example.com", "StrongPass123")
-        me = self.get_json("/api/auth/me/", token=token)
-        self.assertEqual(me.status_code, 200)
-        self.assertEqual(me.json()["email"], "new@example.com")
-
-        patch = self.client.patch(
-            "/api/auth/me/",
-            data=json.dumps({"phone": "5550000000", "accepts_marketing": False}),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
-        )
-        self.assertEqual(patch.status_code, 200)
-        self.assertEqual(patch.json()["phone"], "5550000000")
-        self.assertFalse(patch.json()["accepts_marketing"])
-
-        delete = self.client.delete("/api/auth/me/", HTTP_AUTHORIZATION=f"Bearer {token}")
-        self.assertEqual(delete.status_code, 204)
-        self.assertFalse(User.objects.filter(email="new@example.com").exists())
-
-    def test_signup_and_profile_update_require_names_and_10_digit_phone(self):
-        missing_name = self.post_json("/api/auth/signup/", {
-            "email": "missing-name@example.com",
-            "password": "StrongPass123",
-            "first_name": "",
-            "last_name": "Customer",
-            "phone": "5550009999",
-        })
-        bad_phone = self.post_json("/api/auth/signup/", {
-            "email": "bad-phone@example.com",
-            "password": "StrongPass123",
-            "first_name": "Bad",
-            "last_name": "Phone",
-            "phone": "555-9999",
-        })
-        token = self.token_for()
-        bad_patch = self.client.patch(
-            "/api/auth/me/",
-            data=json.dumps({"phone": "12345"}),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
-        )
-
-        self.assertEqual(missing_name.status_code, 400)
-        self.assertEqual(bad_phone.status_code, 400)
-        self.assertEqual(bad_patch.status_code, 400)
-
-    @override_settings(FRONTEND_URL="http://localhost", SMTP_HOST="", RESEND_API_KEY="")
-    def test_password_reset_request_sends_reset_link_for_test_user_without_enumeration(self):
-        with patch("api.emails.send_email", return_value=None) as send:
-            existing = self.post_json("/api/auth/password-reset/", {"email": TEST_USER_EMAIL.upper()})
-        missing = self.post_json("/api/auth/password-reset/", {"email": "missing@example.com"})
-
-        self.assertEqual(existing.status_code, 200)
-        self.assertEqual(existing.json(), {"ok": True})
-        self.assertEqual(missing.status_code, 200)
-        self.assertEqual(missing.json(), {"ok": True})
-        send.assert_called_once()
-        to, subject, html = send.call_args.args
-        self.assertEqual(to, TEST_USER_EMAIL)
-        self.assertIn("Reset your Dolphin Island Tours password", subject)
-        self.assertIn("/reset-password?uid=", html)
-        self.assertIn("token=", html)
-        self.assertIn("Reset password", html)
-        self.assertIn("24 hours", html)
-
-    @override_settings(FRONTEND_URL="http://localhost")
-    def test_password_reset_email_failure_response_stays_ok(self):
-        with patch("api.emails.send_email", side_effect=RuntimeError("smtp down")):
-            res = self.post_json("/api/auth/password-reset/", {"email": TEST_USER_EMAIL})
-
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json(), {"ok": True})
-
-    def test_password_reset_rate_limit_blocks_repeated_requests(self):
-        responses = [
-            self.post_json("/api/auth/password-reset/", {"email": TEST_USER_EMAIL})
-            for _ in range(6)
-        ]
-
-        self.assertEqual([r.status_code for r in responses[:5]], [200, 200, 200, 200, 200])
-        self.assertEqual(responses[5].status_code, 429)
-        self.assertIn("Too many reset requests", responses[5].json()["detail"])
-
-    def test_password_reset_confirm_validates_token_password_and_allows_login_with_new_password(self):
-        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
-        token = default_token_generator.make_token(self.user)
-
-        weak = self.post_json("/api/auth/password-reset-confirm/", {
-            "uid": uid,
-            "token": token,
-            "password": "short",
-        })
-        invalid = self.post_json("/api/auth/password-reset-confirm/", {
-            "uid": uid,
-            "token": "bad-token",
-            "password": "NewStrongPass123",
-        })
-        confirmed = self.post_json("/api/auth/password-reset-confirm/", {
-            "uid": uid,
-            "token": token,
-            "password": "NewStrongPass123",
-        })
-        old_login = self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "StrongPass123"})
-        new_login = self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "NewStrongPass123"})
-
-        self.assertEqual(weak.status_code, 400)
-        self.assertIn("password", weak.json())
-        self.assertEqual(invalid.status_code, 400)
-        self.assertEqual(confirmed.status_code, 200)
-        self.assertEqual(confirmed.json(), {"ok": True})
-        self.assertEqual(old_login.status_code, 401)
-        self.assertEqual(new_login.status_code, 200)
-        self.assertNotIn("access", new_login.json())
-        self.assertIn("access_token", new_login.cookies)
-
-    def test_cookie_login_authenticates_me_without_exposing_tokens_to_javascript(self):
-        login = self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "StrongPass123"})
-        me = self.client.get("/api/auth/me/")
-
-        self.assertEqual(login.status_code, 200)
-        self.assertEqual(login.json(), {"ok": True})
-        self.assertNotIn("access", login.json())
-        self.assertEqual(login.cookies["access_token"]["httponly"], True)
-        self.assertEqual(login.cookies["refresh_token"]["httponly"], True)
-        self.assertEqual(me.status_code, 200)
-        self.assertEqual(me.json()["email"], TEST_USER_EMAIL)
-
-    def test_profile_password_update_hashes_new_password(self):
-        token = self.token_for()
-
-        res = self.client.patch(
-            "/api/auth/me/",
-            data=json.dumps({
-                "password": "NewStrongPass123",
-                "first_name": "Guest",
-                "last_name": "User",
-                "phone": "5550000100",
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
-        )
-        self.user.refresh_from_db()
-
-        self.assertEqual(res.status_code, 200, res.content)
-        self.assertNotEqual(self.user.password, "NewStrongPass123")
-        self.assertTrue(self.user.check_password("NewStrongPass123"))
-
-    def test_private_endpoints_require_authentication(self):
-        self.assertEqual(self.client.get("/api/auth/me/").status_code, 401)
-        self.assertEqual(self.client.get("/api/bookings/").status_code, 401)
-        self.assertEqual(self.post_json("/api/bookings/create-and-pay/", self.booking_payload()).status_code, 401)
+    def test_customer_auth_endpoints_are_removed(self):
+        """Customer login/signup/account were removed; only Django admin remains."""
+        self.assertEqual(self.post_json("/api/auth/login/", {"email": TEST_USER_EMAIL, "password": "StrongPass123"}).status_code, 404)
+        self.assertEqual(self.post_json("/api/auth/signup/", {"email": "x@example.com"}).status_code, 404)
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 404)
+        self.assertEqual(self.post_json("/api/auth/password-reset/", {"email": TEST_USER_EMAIL}).status_code, 404)
+        # No customer booking list endpoint either.
+        self.assertEqual(self.client.get("/api/bookings/").status_code, 404)
 
     def test_contact_form_creates_message(self):
         res = self.post_json("/api/contact/", {
@@ -736,18 +538,7 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
         self.assertEqual(res.status_code, 201)
         self.assertTrue(ContactMessage.objects.filter(email="visitor@example.com").exists())
 
-    def test_signup_and_contact_rate_limits_block_abuse(self):
-        signup_responses = [
-            self.post_json("/api/auth/signup/", {
-                "email": f"rate-{i}@example.com",
-                "password": "StrongPass123",
-                "first_name": "Rate",
-                "last_name": "Limit",
-                "phone": "5550009999",
-            })
-            for i in range(6)
-        ]
-        cache.clear()
+    def test_contact_rate_limit_blocks_abuse(self):
         contact_responses = [
             self.post_json("/api/contact/", {
                 "name": "Visitor",
@@ -757,8 +548,6 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
             for i in range(6)
         ]
 
-        self.assertEqual([r.status_code for r in signup_responses[:5]], [201] * 5)
-        self.assertEqual(signup_responses[5].status_code, 429)
         self.assertEqual([r.status_code for r in contact_responses[:5]], [201] * 5)
         self.assertEqual(contact_responses[5].status_code, 429)
 
@@ -827,10 +616,37 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
 
 @override_settings(FAKE_PAYMENTS=True, RESEND_API_KEY="", SMTP_HOST="", ADMIN_EMAIL="admin@example.com")
 class BookingAndPromoTests(ApiTestCase):
-    def test_create_and_pay_fake_payment_creates_paid_booking(self):
-        token = self.token_for()
+    def test_guest_lookup_returns_matching_booking_by_email_and_last_name(self):
+        booking = self.create_paid_booking(user=None, email="guest.lookup@example.com")
+        booking.customer_name = "Alex Buyer"
+        booking.save(update_fields=["customer_name"])
 
-        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
+        res = self.post_json("/api/bookings/lookup/", {
+            "email": "GUEST.LOOKUP@example.com",
+            "last_name": "Buyer",
+        })
+
+        self.assertEqual(res.status_code, 200, res.content)
+        body = res.json()
+        self.assertEqual(len(body["results"]), 1)
+        self.assertEqual(body["results"][0]["id"], str(booking.id))
+        self.assertEqual(body["results"][0]["customer_email"], "guest.lookup@example.com")
+
+    def test_guest_lookup_does_not_return_wrong_last_name(self):
+        booking = self.create_paid_booking(user=None, email="guest.lookup@example.com")
+        booking.customer_name = "Alex Buyer"
+        booking.save(update_fields=["customer_name"])
+
+        res = self.post_json("/api/bookings/lookup/", {
+            "email": "guest.lookup@example.com",
+            "last_name": "Other",
+        })
+
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()["results"], [])
+
+    def test_guest_create_and_pay_fake_payment_creates_paid_booking(self):
+        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload())
 
         self.assertEqual(res.status_code, 201, res.content)
         body = res.json()
@@ -839,7 +655,7 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(body["slot"]["seats_remaining"], 3)
         self.assertEqual(len(body["travelers"]), 3)
         self.assertEqual(body["travelers"][0]["name"], "Guest User")
-        self.assertTrue(Booking.objects.filter(user=self.user, status="paid").exists())
+        self.assertTrue(Booking.objects.filter(user__isnull=True, customer_email=TEST_USER_EMAIL, status="paid").exists())
         audit = ActivityLog.objects.get(action="booking_payment_verified")
         self.assertEqual(audit.actor, TEST_USER_EMAIL)
         self.assertEqual(audit.metadata["total_cents"], 18000)
@@ -861,22 +677,17 @@ class BookingAndPromoTests(ApiTestCase):
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_real_payment_mode_requires_source_id_before_creating_booking(self):
-        token = self.token_for()
-
-        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
+        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload())
 
         self.assertEqual(res.status_code, 400)
         self.assertEqual(Booking.objects.count(), 0)
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_declined_payment_marks_attempt_failed_without_sending_receipt(self):
-        token = self.token_for()
-
         with patch("api.views.charge", side_effect=RuntimeError("Square error: CARD_DECLINED")):
             res = self.post_json(
                 "/api/bookings/create-and-pay/",
                 self.booking_payload(source_id="cnon:card-nonce"),
-                token=token,
             )
 
         self.assertEqual(res.status_code, 402)
@@ -891,7 +702,6 @@ class BookingAndPromoTests(ApiTestCase):
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_real_payment_sends_itemized_amounts_to_square(self):
-        token = self.token_for()
         self.tour.price_per_person = 5
         self.tour.tax_rate_percent = "1.00"
         self.tour.save(update_fields=["price_per_person", "tax_rate_percent"])
@@ -900,7 +710,6 @@ class BookingAndPromoTests(ApiTestCase):
             res = self.post_json(
                 "/api/bookings/create-and-pay/",
                 self.booking_payload(source_id="cnon:card-nonce"),
-                token=token,
             )
 
         self.assertEqual(res.status_code, 201, res.content)
@@ -914,7 +723,6 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(kwargs["item_name"], "Wildlife Tour")
 
     def test_booking_validation_rejects_party_limits_capacity_and_past_slots(self):
-        token = self.token_for()
         past = TourSlot.objects.create(
             tour=self.tour,
             date=self.today - timedelta(days=1),
@@ -922,40 +730,24 @@ class BookingAndPromoTests(ApiTestCase):
             capacity=6,
         )
 
-        too_small = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=1), token=token)
-        too_large = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=7), token=token)
-        past_res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(slot_id=past.id), token=token)
+        too_small = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=1))
+        too_large = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=7))
+        past_res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(slot_id=past.id))
         self.create_paid_booking(slot=self.slot, party_size=5)
-        over_capacity = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=2), token=token)
+        over_capacity = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(party_size=2))
 
         self.assertEqual(too_small.status_code, 400)
         self.assertEqual(too_large.status_code, 400)
         self.assertEqual(past_res.status_code, 400)
         self.assertEqual(over_capacity.status_code, 400)
 
-    def test_users_only_see_their_own_bookings(self):
-        other = User.objects.create_user(
-            username="other",
-            email="other@example.com",
-            password="StrongPass123",
-        )
-        own = self.create_paid_booking(user=self.user, email=self.user.email)
-        self.create_paid_booking(user=other, email=other.email)
-        token = self.token_for()
-
-        res = self.client.get("/api/bookings/", HTTP_AUTHORIZATION=f"Bearer {token}")
-
-        self.assertEqual(res.status_code, 200)
-        ids = {row["id"] for row in res.json()}
-        self.assertEqual(ids, {str(own.id)})
-
-    def test_paid_bookings_cannot_be_hard_deleted_through_api(self):
-        token = self.token_for()
+    def test_bookings_endpoint_only_exposes_create_and_pay(self):
         booking = self.create_paid_booking()
 
-        res = self.client.delete(f"/api/bookings/{booking.id}/", HTTP_AUTHORIZATION=f"Bearer {token}")
-
-        self.assertEqual(res.status_code, 405)
+        # No customer list, retrieve, or delete routes remain on the booking API.
+        self.assertEqual(self.client.get("/api/bookings/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/bookings/{booking.id}/").status_code, 404)
+        self.assertEqual(self.client.delete(f"/api/bookings/{booking.id}/").status_code, 404)
         self.assertTrue(Booking.objects.filter(pk=booking.pk, status="paid").exists())
 
     def test_promo_validation_handles_percent_amount_locked_inactive_and_expired_codes(self):
@@ -986,6 +778,21 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertFalse(inactive.json()["valid"])
         self.assertFalse(expired.json()["valid"])
 
+    def test_promo_validation_rejects_blank_code_and_zero_subtotal(self):
+        blank = self.post_json("/api/promo/validate/", {
+            "code": " ",
+            "email": TEST_USER_EMAIL,
+            "subtotal_cents": 12000,
+        })
+        zero_subtotal = self.post_json("/api/promo/validate/", {
+            "code": "TEN",
+            "email": TEST_USER_EMAIL,
+            "subtotal_cents": 0,
+        })
+
+        self.assertEqual(blank.status_code, 400)
+        self.assertEqual(zero_subtotal.status_code, 400)
+
     def test_promo_validation_rate_limit_blocks_repeated_attempts(self):
         PromoCode.objects.create(code="RATE", kind="percent", percent_off=10, max_uses=0)
 
@@ -1002,18 +809,15 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertIn("Too many promo code attempts", responses[20].json()["detail"])
 
     def test_single_use_promo_is_redeemed_once_and_blocks_second_booking(self):
-        token = self.token_for()
         PromoCode.objects.create(code="ONCE", kind="percent", percent_off=25, max_uses=1)
 
         first = self.post_json(
             "/api/bookings/create-and-pay/",
             self.booking_payload(promo_code="once"),
-            token=token,
         )
         second = self.post_json(
             "/api/bookings/create-and-pay/",
             self.booking_payload(party_size=2, promo_code="ONCE"),
-            token=token,
         )
         validate_again = self.post_json(
             "/api/promo/validate/",
@@ -1028,46 +832,33 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertFalse(validate_again.json()["valid"])
 
-    def test_locked_promo_authorization_uses_authenticated_user_email(self):
-        token = self.token_for()
+    def test_locked_promo_authorization_uses_booking_email(self):
         PromoCode.objects.create(
             code="OWNER",
             kind="amount",
             amount_off_cents=5000,
-            locked_to_email=TEST_USER_EMAIL,
+            locked_to_email="owner@example.com",
             max_uses=0,
         )
 
-        authorized_user_with_different_customer_email = self.post_json(
+        matching_email = self.post_json(
             "/api/bookings/create-and-pay/",
-            self.booking_payload(customer_email="other@example.com", promo_code="OWNER"),
-            token=token,
+            self.booking_payload(customer_email="OWNER@example.com", promo_code="OWNER"),
         )
-        attacker = User.objects.create_user(
-            username="attacker",
-            email="attacker@example.com",
-            password="StrongPass123",
-            first_name="Attack",
-            last_name="User",
-            phone="5550009998",
-        )
-        attacker_token = self.token_for("attacker@example.com", "StrongPass123")
-        attacker_spoofing_customer_email = self.post_json(
+        wrong_email = self.post_json(
             "/api/bookings/create-and-pay/",
-            self.booking_payload(customer_email=TEST_USER_EMAIL.upper(), promo_code="OWNER"),
-            token=attacker_token,
+            self.booking_payload(party_size=2, customer_email="someone-else@example.com", promo_code="OWNER"),
         )
 
-        self.assertEqual(authorized_user_with_different_customer_email.status_code, 201)
-        self.assertEqual(authorized_user_with_different_customer_email.json()["discount_cents"], 5000)
-        self.assertEqual(attacker_spoofing_customer_email.status_code, 400)
+        self.assertEqual(matching_email.status_code, 201, matching_email.content)
+        self.assertEqual(matching_email.json()["discount_cents"], 5000)
+        self.assertEqual(wrong_email.status_code, 400)
 
     def test_booking_total_includes_tour_tax_rate(self):
-        token = self.token_for()
         self.tour.tax_rate_percent = "7.50"
         self.tour.save(update_fields=["tax_rate_percent"])
 
-        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
+        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload())
 
         self.assertEqual(res.status_code, 201, res.content)
         body = res.json()
@@ -1075,11 +866,10 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(body["total_cents"], 19350)
 
     def test_tour_zero_tax_rate_is_honored(self):
-        token = self.token_for()
         self.tour.tax_rate_percent = "0.00"
         self.tour.save(update_fields=["tax_rate_percent"])
 
-        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload(), token=token)
+        res = self.post_json("/api/bookings/create-and-pay/", self.booking_payload())
 
         self.assertEqual(res.status_code, 201, res.content)
         body = res.json()
@@ -1141,156 +931,19 @@ class SquarePaymentTests(TestCase):
         self.assertEqual(payment_call.kwargs["json"]["order_id"], "square-order-id")
 
 
-class ReviewTests(ApiTestCase):
-    def test_anonymous_review_submission_is_rejected(self):
-        payload = {
-            "tour_slug": "wildlife",
-            "author_name": "Visitor",
-            "author_email": "visitor@example.com",
-            "rating": 5,
-            "title": "Great",
-            "body": "Wonderful trip.",
-        }
+class ReviewSystemRemovedTests(ApiTestCase):
+    def test_legacy_local_review_api_is_not_available(self):
+        responses = [
+            self.client.get("/api/reviews/"),
+            self.client.post("/api/reviews/", data={}, content_type="application/json"),
+            self.client.get("/api/reviews/stats/"),
+            self.client.get("/api/tours/wildlife/reviews/stats/"),
+        ]
 
-        created = self.post_json("/api/reviews/", payload)
+        self.assertTrue(all(response.status_code == 404 for response in responses))
 
-        self.assertEqual(created.status_code, 401)
-        self.assertFalse(Review.objects.exists())
-
-    def test_review_title_and_body_have_length_limits(self):
-        self.create_paid_booking()
-        token = self.token_for()
-        too_long_body = self.post_json("/api/reviews/", {
-            "tour_slug": "wildlife",
-            "author_name": "Visitor",
-            "author_email": "visitor@example.com",
-            "rating": 5,
-            "title": "Great",
-            "body": "x" * 1001,
-        }, token=token)
-        too_long_title = self.post_json("/api/reviews/", {
-            "tour_slug": "wildlife",
-            "author_name": "Visitor",
-            "author_email": "visitor2@example.com",
-            "rating": 5,
-            "title": "x" * 81,
-            "body": "Wonderful trip.",
-        }, token=token)
-
-        self.assertEqual(too_long_body.status_code, 400)
-        self.assertIn("body", too_long_body.json())
-        self.assertEqual(too_long_title.status_code, 400)
-        self.assertIn("title", too_long_title.json())
-
-    def test_paid_authenticated_user_review_auto_approves_and_duplicate_is_blocked(self):
-        self.create_paid_booking()
-        token = self.token_for()
-        payload = {
-            "tour_slug": "wildlife",
-            "author_name": "Guest User",
-            "author_email": TEST_USER_EMAIL,
-            "rating": 4,
-            "title": "Nice morning",
-            "body": "Crew was helpful.",
-        }
-
-        created = self.post_json("/api/reviews/", payload, token=token)
-        duplicate = self.post_json("/api/reviews/", payload, token=token)
-
-        self.assertEqual(created.status_code, 201, created.content)
-        self.assertFalse(created.json()["pending_moderation"])
-        self.assertEqual(duplicate.status_code, 400)
-        review = Review.objects.get(user=self.user)
-        self.assertTrue(review.is_approved)
-        self.assertIsNotNone(review.booking)
-        self.assertTrue(created.json()["review"]["verified_guest"])
-        self.assertEqual(created.json()["review"]["reviewer_type"], "verified_guest")
-
-    def test_authenticated_unbooked_user_review_requires_admin_approval(self):
-        token = self.token_for()
-        payload = {
-            "tour_slug": "wildlife",
-            "author_name": "Guest User",
-            "author_email": TEST_USER_EMAIL,
-            "rating": 5,
-            "title": "Helpful team",
-            "body": "Looking forward to booking soon.",
-        }
-
-        created = self.post_json("/api/reviews/", payload, token=token)
-        public_list = Client().get("/api/reviews/?tour=wildlife")
-        own_list = self.get_json("/api/reviews/?tour=wildlife", token=token)
-
-        self.assertEqual(created.status_code, 201, created.content)
-        self.assertTrue(created.json()["pending_moderation"])
-        review = Review.objects.get(user=self.user)
-        self.assertFalse(review.is_approved)
-        self.assertIsNone(review.booking)
-        self.assertFalse(created.json()["review"]["verified_guest"])
-        self.assertEqual(created.json()["review"]["reviewer_type"], "registered_user")
-        self.assertEqual(public_list.json(), [])
-        self.assertEqual(len(own_list.json()), 1)
-        self.assertTrue(own_list.json()[0]["pending"])
-
-    def test_review_sort_filter_reply_and_helpful_vote_api(self):
-        low = Review.objects.create(
-            tour=self.tour,
-            author_name="Low",
-            author_email="low@example.com",
-            rating=2,
-            title="Low tide",
-            body="It was fine.",
-            is_approved=True,
-            reply_text="Thanks for joining us.",
-        )
-        high = Review.objects.create(
-            tour=self.tour,
-            booking=self.create_paid_booking(),
-            user=self.user,
-            author_name="High",
-            author_email=TEST_USER_EMAIL,
-            rating=5,
-            title="Best trip",
-            body="Loved it.",
-            is_approved=True,
-        )
-
-        highest = self.client.get("/api/reviews/?tour=wildlife&sort=highest")
-        filtered = self.client.get("/api/reviews/?tour=wildlife&rating=2")
-        helpful = self.client.post(f"/api/reviews/{high.id}/helpful/")
-        duplicate = self.client.post(f"/api/reviews/{high.id}/helpful/")
-
-        self.assertEqual(highest.status_code, 200)
-        self.assertEqual([row["id"] for row in highest.json()], [high.id, low.id])
-        self.assertTrue(highest.json()[0]["verified_guest"])
-        self.assertEqual(highest.json()[1]["reply_text"], "Thanks for joining us.")
-        self.assertEqual(filtered.status_code, 200)
-        self.assertEqual([row["id"] for row in filtered.json()], [low.id])
-        self.assertEqual(helpful.status_code, 200)
-        self.assertTrue(helpful.json()["created"])
-        self.assertEqual(helpful.json()["helpful_count"], 1)
-        self.assertEqual(duplicate.status_code, 200)
-        self.assertFalse(duplicate.json()["created"])
-        self.assertEqual(duplicate.json()["helpful_count"], 1)
-
-    @patch("api.views.send_email")
-    def test_review_submission_notifies_owner_for_moderation(self, mock_send_email):
-        self.create_paid_booking()
-        token = self.token_for()
-        payload = {
-            "tour_slug": "wildlife",
-            "author_name": "Visitor",
-            "author_email": TEST_USER_EMAIL,
-            "rating": 3,
-            "title": "Okay",
-            "body": "Please review this.",
-        }
-
-        created = self.post_json("/api/reviews/", payload, token=token)
-
-        self.assertEqual(created.status_code, 201, created.content)
-        mock_send_email.assert_called_once()
-        self.assertIn("New review", mock_send_email.call_args.args[1])
+    def test_review_model_is_not_registered_in_admin(self):
+        self.assertNotIn(Review, admin.site._registry)
 
 
 class AdminMarketingPromoTests(ApiTestCase):
@@ -1301,7 +954,10 @@ class AdminMarketingPromoTests(ApiTestCase):
             password="StrongPass123",
             accepts_marketing=False,
         )
-        MailingListEntry.objects.create(email=TEST_USER_EMAIL, name="Duplicate", subscribed=True)
+        MailingListEntry.objects.update_or_create(
+            email=TEST_USER_EMAIL,
+            defaults={"name": "Duplicate", "subscribed": True},
+        )
         MailingListEntry.objects.create(email="list@example.com", name="List", subscribed=True)
         MailingListEntry.objects.create(email="unsub@example.com", name="Unsub", subscribed=False)
         campaign = EmailCampaign.objects.create(
@@ -1345,25 +1001,25 @@ class AdminMarketingPromoTests(ApiTestCase):
         self.assertEqual(campaign.sent_count, 0)
         job = EmailDeliveryJob.objects.get(campaign=campaign)
         self.assertEqual(job.status, "queued")
-        self.assertEqual(job.total_count, 2)
+        self.assertEqual(job.total_count, 3)
         self.assertTrue(ActivityLog.objects.filter(action="campaign_email_queued", actor="admin@example.com").exists())
-        self.assertEqual(job.recipients.count(), 2)
+        self.assertEqual(job.recipients.count(), 3)
         codes = PromoCode.objects.filter(campaign=campaign)
-        self.assertEqual(codes.count(), 2)
+        self.assertEqual(codes.count(), 3)
         self.assertEqual({c.max_uses for c in codes}, {1})
         self.assertEqual({c.used_count for c in codes}, {0})
-        self.assertEqual({c.locked_to_email for c in codes}, {"one@example.com", "two@example.com"})
+        self.assertEqual({c.locked_to_email for c in codes}, {TEST_USER_EMAIL, "one@example.com", "two@example.com"})
 
         with patch("api.email_queue.send_email", return_value=None) as send:
             call_command("process_email_queue", once=True, batch_size=10)
 
         campaign.refresh_from_db()
         job.refresh_from_db()
-        self.assertEqual(send.call_count, 2)
+        self.assertEqual(send.call_count, 3)
         self.assertEqual(campaign.status, "sent")
-        self.assertEqual(campaign.sent_count, 2)
+        self.assertEqual(campaign.sent_count, 3)
         self.assertEqual(job.status, "sent")
-        self.assertEqual(EmailDeliveryRecipient.objects.filter(status="sent").count(), 2)
+        self.assertEqual(EmailDeliveryRecipient.objects.filter(status="sent").count(), 3)
 
     def test_admin_can_add_contact_message_from_button(self):
         admin_user = User.objects.create_superuser(
@@ -1480,7 +1136,10 @@ class AdminMarketingPromoTests(ApiTestCase):
         self.assertIn("/api/unsubscribe/", rendered)
 
         token = unsubscribe_token(self.user.email)
-        MailingListEntry.objects.create(email=self.user.email, name="Guest User", subscribed=True)
+        MailingListEntry.objects.update_or_create(
+            email=self.user.email,
+            defaults={"name": "Guest User", "subscribed": True},
+        )
         res = self.client.get(f"/api/unsubscribe/{token}/")
 
         self.assertEqual(res.status_code, 200)

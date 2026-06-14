@@ -28,7 +28,6 @@ const adminSmokePaths = [
   "/admin/api/navigationlink/",
   "/admin/api/pagecontent/",
   "/admin/api/promocode/",
-  "/admin/api/review/",
   "/admin/api/siteimage/",
   "/admin/api/sitesettings/",
   "/admin/api/tourslot/",
@@ -79,38 +78,17 @@ async function selectCalendarDate(page, isoDate) {
   await page.getByRole("button", { name: String(target.getDate()), exact: true }).click();
 }
 
-test("full local stack supports signup, login, booking, reviews, and admin", async ({ page }) => {
+test("full local stack supports guest booking, receipt download, Google reviews, and admin", async ({ page }) => {
   test.setTimeout(90_000);
   const consoleErrors = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
 
-  await page.goto("/signup");
-  await expect(page.getByRole("heading", { name: "Create an account" })).toBeVisible();
-  await page.getByLabel("First name").fill(user.firstName);
-  await page.getByLabel("Last name").fill(user.lastName);
-  await page.getByLabel(/^Email$/).fill(user.email);
-  await page.getByLabel("Phone").fill(user.phone);
-  await page.getByLabel("Password", { exact: true }).fill(user.password);
-  await page.getByLabel("Confirm Password").fill(user.password);
-  await page.getByRole("button", { name: "Sign up" }).click();
-  await expect(page.getByRole("link", { name: /^Account$/ })).toBeVisible();
-
-  await page.getByRole("button", { name: "Logout" }).click();
-  await expect(page.getByRole("link", { name: /^Login$/ })).toBeVisible();
-
-  await page.goto("/login");
-  await page.getByLabel(/^Email$/).fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
-  await Promise.all([
-    page.waitForResponse((response) => response.url().includes("/api/auth/login/") && response.status() === 200),
-    page.getByRole("button", { name: "Login" }).click(),
-  ]);
-  await expect(page.getByRole("link", { name: /^Account$/ })).toBeVisible();
-
   await page.goto("/tours/dolphin-wildlife-excursion");
   await expect(page.getByRole("heading", { name: "Dolphin Wildlife Excursion" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Login$/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Sign up$/ })).toHaveCount(0);
   const bookableSlot = await firstBookableSlot(page);
   await selectCalendarDate(page, bookableSlot.date);
   await page.getByRole("button", { name: new RegExp(`^${escapeRegExp(bookableSlot.time)}`) }).click();
@@ -124,18 +102,25 @@ test("full local stack supports signup, login, booking, reviews, and admin", asy
 
   await expect(page).toHaveURL(/\/book\/dolphin-wildlife-excursion\?slot=\d+/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Contact & payment" })).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel("Full name").fill(`${user.firstName} ${user.lastName}`);
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByLabel("Phone").fill(user.phone);
   await expect(page.getByText("Test mode - fake payment")).toBeVisible();
-  await page.getByRole("button", { name: /Pretend to pay/ }).click();
-  await expect(page.getByText("Booking confirmed!")).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Pretend to pay/ }).click(),
+  ]);
+  expect(download.suggestedFilename()).toContain("dolphin-island-confirmation");
+  await expect(page.getByRole("heading", { name: "You are booked." })).toBeVisible();
+  await expect(page.getByText(`A confirmation email was sent to ${user.email}.`)).toBeVisible();
   await expect(page.getByText("Dolphin Wildlife Excursion").first()).toBeVisible();
 
   await page.goto("/reviews#write-review");
-  await expect(page.getByRole("heading", { name: "Leave a review" })).toBeVisible();
-  await page.getByLabel("Tour *").selectOption("dolphin-wildlife-excursion");
-  await page.getByLabel("Title (optional)").fill("Great local test tour");
-  await page.getByLabel("Your review *").fill("The booking flow worked and the verified review form accepted this local test review.");
-  await page.getByRole("button", { name: "Submit review" }).click();
-  await expect(page.getByText("Thanks for the review!")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reviews live on Google." })).toBeVisible();
+  const addGoogleReview = page.getByRole("link", { name: "Add a Google review" });
+  await expect(addGoogleReview).toBeVisible();
+  await expect(addGoogleReview).toHaveAttribute("href", /google\.com/);
+  await expect(page.getByText("No Dolphin Island Tours account is required.")).toBeVisible();
 
   await page.goto("/admin/login/");
   await page.locator('input[name="username"]').fill(admin.email);
@@ -149,6 +134,8 @@ test("full local stack supports signup, login, booking, reviews, and admin", asy
     expect(response?.ok()).toBeTruthy();
     await expect(page.locator("#content")).toBeVisible();
   }
+  const reviewAdminResponse = await page.request.get("/admin/api/review/");
+  expect(reviewAdminResponse?.status()).toBe(404);
 
   await page.goto("/admin/api/booking/");
   await expect(page.getByText(user.email)).toBeVisible();
@@ -157,6 +144,7 @@ test("full local stack supports signup, login, booking, reviews, and admin", asy
     !text.includes("favicon")
     && !text.includes("status of 401")
     && !text.includes("Cross-Origin-Opener-Policy header has been ignored")
+    && !text.includes("Logout failed TypeError: Failed to fetch")
   ));
   expect(unexpectedConsoleErrors).toEqual([]);
 });

@@ -1,29 +1,33 @@
-import { clearTokens } from "../../src/lib/api.js";
+import { api } from "../../src/lib/api.js";
 
-test("logout sends the CSRF header required for cookie auth", async () => {
+test("guest POST requests include the CSRF header from the cookie", async () => {
   document.cookie = "csrftoken=test-csrf-token";
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
-    status: 204,
+    status: 200,
+    json: vi.fn().mockResolvedValue({ ok: true }),
   });
 
-  await clearTokens();
+  await api.contact({ name: "A", email: "a@example.com", message: "Hi" });
 
-  expect(global.fetch).toHaveBeenCalledWith("/api/auth/logout/", {
-    method: "POST",
-    credentials: "include",
-    headers: { "X-CSRFToken": "test-csrf-token" },
-  });
+  expect(global.fetch).toHaveBeenCalledWith(
+    "/api/contact/",
+    expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      headers: expect.objectContaining({ "X-CSRFToken": "test-csrf-token" }),
+    })
+  );
 });
 
-test("logout surfaces request failures instead of pretending it succeeded", async () => {
-  document.cookie = "csrftoken=test-csrf-token";
+test("failed requests surface the backend error detail", async () => {
   global.fetch = vi.fn().mockResolvedValue({
     ok: false,
-    status: 403,
-    statusText: "Forbidden",
-    json: vi.fn().mockResolvedValue({ detail: "CSRF Failed" }),
+    status: 400,
+    statusText: "Bad Request",
+    json: vi.fn().mockResolvedValue({ detail: "Something went wrong" }),
   });
 
-  await expect(clearTokens()).rejects.toThrow("CSRF Failed");
+  await expect(api.lookupBookings({ email: "a@example.com", last_name: "Doe" }))
+    .rejects.toThrow("Something went wrong");
 });

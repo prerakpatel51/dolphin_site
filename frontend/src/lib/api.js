@@ -1,23 +1,5 @@
 const BASE = process.env.NEXT_PUBLIC_API_BASE || "/api";
 
-export async function clearTokens() {
-  const r = await fetch(`${BASE}/auth/logout/`, {
-    method: "POST",
-    credentials: "include",
-    headers: csrfHeaders("POST"),
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(errorMessage(err));
-  }
-}
-
-async function refreshAuth() {
-  const headers = csrfHeaders();
-  const r = await fetch(`${BASE}/auth/refresh/`, { method: "POST", credentials: "include", headers });
-  return r.ok;
-}
-
 function cookieValue(name) {
   return document.cookie
     .split("; ")
@@ -47,7 +29,7 @@ function errorMessage(err) {
   return "Request failed";
 }
 
-async function request(path, { method = "GET", body, auth = true, optionalAuth = false, retry = true } = {}) {
+async function request(path, { method = "GET", body } = {}) {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const headers = { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...csrfHeaders(method) };
   const r = await fetch(`${BASE}${path}`, {
@@ -55,12 +37,6 @@ async function request(path, { method = "GET", body, auth = true, optionalAuth =
     body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
     credentials: "include",
   });
-  if (r.status === 401 && auth && retry && await refreshAuth()) {
-    return request(path, { method, body, auth, optionalAuth, retry: false });
-  }
-  if (r.status === 401 && optionalAuth) {
-    return request(path, { method, body, auth: false, optionalAuth: false, retry: false });
-  }
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: r.statusText }));
     throw new Error(errorMessage(err));
@@ -70,33 +46,15 @@ async function request(path, { method = "GET", body, auth = true, optionalAuth =
 }
 
 export const api = {
-  signup: (d) => request("/auth/signup/", { method: "POST", body: d, auth: false }),
-  login: async (email, password) => {
-    const r = await request("/auth/login/", { method: "POST", body: { email, password }, auth: false });
-    return r;
-  },
-  me: () => request("/auth/me/"),
-  updateMe: (d) => request("/auth/me/", { method: "PATCH", body: d }),
-  deleteMe: () => request("/auth/me/", { method: "DELETE" }),
-  config: () => request("/config/", { auth: false }),
-  tours: () => request("/tours/", { auth: false }),
-  tour: (slug) => request(`/tours/${slug}/`, { auth: false }),
-  slots: (tourSlug) => request(`/slots/${tourSlug ? `?tour=${tourSlug}` : ""}`, { auth: false }),
-  slot: (id) => request(`/slots/${id}/`, { auth: false }),
-  tourDates: (slug) => request(`/tours/${slug}/dates/`, { auth: false }),
-  site: () => request("/site/", { auth: false }),
-  contact: (d) => request("/contact/", { method: "POST", body: d, auth: false }),
-  passwordResetRequest: (email) => request("/auth/password-reset/", { method: "POST", body: { email }, auth: false }),
-  passwordResetConfirm: (d) => request("/auth/password-reset-confirm/", { method: "POST", body: d, auth: false }),
-  validatePromo: (d) => request("/promo/validate/", { method: "POST", body: d, auth: false }),
-  reviews: (params = {}) => {
-    const q = new URLSearchParams(params).toString();
-    return request(`/reviews/${q ? `?${q}` : ""}`, { optionalAuth: true });
-  },
-  submitReview: (d) => request("/reviews/", { method: "POST", body: d }),
-  markReviewHelpful: (id) => request(`/reviews/${id}/helpful/`, { method: "POST", auth: false }),
-  allReviewStats: () => request("/reviews/stats/", { auth: false }),
-  reviewStats: (slug) => request(`/tours/${slug}/reviews/stats/`, { auth: false }),
-  myBookings: () => request("/bookings/"),
+  config: () => request("/config/"),
+  tours: () => request("/tours/"),
+  tour: (slug) => request(`/tours/${slug}/`),
+  slots: (tourSlug) => request(`/slots/${tourSlug ? `?tour=${tourSlug}` : ""}`),
+  slot: (id) => request(`/slots/${id}/`),
+  tourDates: (slug) => request(`/tours/${slug}/dates/`),
+  site: () => request("/site/"),
+  contact: (d) => request("/contact/", { method: "POST", body: d }),
+  validatePromo: (d) => request("/promo/validate/", { method: "POST", body: d }),
+  lookupBookings: (d) => request("/bookings/lookup/", { method: "POST", body: d }),
   createAndPay: (d) => request("/bookings/create-and-pay/", { method: "POST", body: d }),
 };

@@ -21,12 +21,27 @@ class Command(BaseCommand):
         settings.tagline = "Creating unforgettable dolphin encounters on Florida's Space Coast."
         settings.seo_title = "Dolphin Island Tours | Private Merritt Island Boat Tours"
         settings.seo_description = (
-            "Book private and small-group Merritt Island dolphin tours, sunset cruises, wildlife "
-            "trips, and rocket launch boat tours near Cocoa Beach."
+            "Dolphin Island Tours LLC offers private and small-group boat tours from Merritt Island, "
+            "Florida, near Cocoa Beach, Cape Canaveral, Port Canaveral, Kennedy Space Center, and the "
+            "Indian River Lagoon. Guests can book dolphin watching trips, manatee and wildlife tours, "
+            "sunset cruises, rocket launch viewing trips, family boat tours, couples cruises, custom "
+            "private charters, and relaxed Space Coast sightseeing on the water."
         )
         settings.seo_keywords = (
-            "Merritt Island dolphin tours, private boat tour Cocoa Beach, exclusive boat tours, "
-            "Cape Canaveral rocket launch boat tour, Indian River Lagoon, sunset cruise, manatee tour"
+            "Dolphin Island Tours, Dolphin Island Tours LLC, Merritt Island dolphin tours, Cocoa Beach "
+            "dolphin tour, private dolphin tour Merritt Island, small group boat tour Merritt Island, "
+            "Space Coast boat tours, Cape Canaveral boat tour, Port Canaveral boat tour, Kennedy Space "
+            "Center boat tour, Indian River Lagoon tour, Florida dolphin watching, manatee tour Merritt "
+            "Island, wildlife boat tour Cocoa Beach, sunset cruise Merritt Island, rocket launch boat tour"
+        )
+        settings.review_count = 1
+        settings.average_rating = "5.0"
+        settings.google_business_url = settings.google_business_url or "https://share.google/Ig5FtVIQGXBWMUIGC"
+        settings.google_review_url = "https://g.page/r/CehBxKNRm1TfEBM/review"
+        settings.google_reviews_url = "https://share.google/Ig5FtVIQGXBWMUIGC"
+        settings.google_reviews_embed_url = (
+            "https://www.google.com/maps?q="
+            "Dolphin+Island+Tours+LLC+2700+Harbortown+Dr+Merritt+Island+FL+32952&output=embed"
         )
         settings.robots_txt = (
             "User-agent: *\n"

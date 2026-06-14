@@ -4,7 +4,7 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 ARG NEXT_PUBLIC_API_BASE=/api
-ARG NEXT_PUBLIC_SITE_URL=https://dolphinsite-production.up.railway.app
+ARG NEXT_PUBLIC_SITE_URL=https://dolphinislandtours.com
 ARG INTERNAL_API_BASE=http://backend:8000/api
 ARG INTERNAL_API_ORIGIN=http://backend:8000
 ARG BACKEND_UPSTREAM=
@@ -18,7 +18,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ARG NEXT_PUBLIC_API_BASE=/api
-ARG NEXT_PUBLIC_SITE_URL=https://dolphinsite-production.up.railway.app
+ARG NEXT_PUBLIC_SITE_URL=https://dolphinislandtours.com
 ARG INTERNAL_API_BASE=http://backend:8000/api
 ARG INTERNAL_API_ORIGIN=http://backend:8000
 ARG BACKEND_UPSTREAM=backend:8000

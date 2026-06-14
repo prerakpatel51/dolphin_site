@@ -518,14 +518,17 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                                      "meeting_instructions", "hours", "maps_url", "map_embed_url")}),
         ("Booking display", {
             "fields": ("price_blurb",),
-            "description": "Shown on public booking and tour sections. Review count and average rating are calculated from approved guest reviews.",
+            "description": "Shown on public booking and tour sections. Google review links are managed below.",
         }),
         ("Analytics & ads", {"fields": ("google_analytics_id", "google_tag_manager_id",
                                         "google_ads_id", "google_ads_booking_conversion_label",
                                         "meta_pixel_id"),
                              "classes": ("collapse",)}),
         ("Social links", {"fields": ("facebook_url", "instagram_url", "youtube_url",
-                                     "tiktok_url", "tripadvisor_url", "google_business_url")}),
+                                     "tiktok_url", "tripadvisor_url")}),
+        ("Google reviews", {"fields": ("google_business_url", "google_review_url",
+                                       "google_reviews_url", "google_reviews_embed_url"),
+                            "description": "Public review buttons use these URLs instead of the old on-site review form."}),
         ("Footer", {"fields": ("footer_legal_text",)}),
         ("Robots.txt", {"fields": ("robots_txt",), "classes": ("collapse",)}),
     )
@@ -568,7 +571,7 @@ class PageContentAdmin(admin.ModelAdmin):
             ("Call to action / success copy", {"fields": ("cta_title", "cta_body")}),
             ("Advanced structured content", {"fields": ("extra_content",),
                                              "classes": ("collapse",),
-                                             "description": "Optional JSON for cards, FAQs, reviews, or future sections."}),
+                                             "description": "Optional JSON for cards, FAQs, lookup content, or future sections."}),
         )
 
     def hero_image_preview(self, obj):
@@ -1213,47 +1216,6 @@ class ActivityLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
-
-
-from .models import Review, ReviewPhoto
-
-
-class ReviewPhotoInline(admin.TabularInline):
-    model = ReviewPhoto
-    extra = 0
-    fields = ("image", "sort_order")
-    max_num = 5
-
-
-@admin.register(Review)
-class ReviewAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "stars", "author_name", "tour", "title", "verified_guest", "helpful_count", "is_approved", "is_featured")
-    list_filter = ("is_approved", "is_featured", "rating", "tour")
-    list_editable = ("is_approved", "is_featured")
-    search_fields = ("author_name", "author_email", "title", "body", "reply_text")
-    readonly_fields = ("user", "booking", "created_at")
-    inlines = [ReviewPhotoInline]
-    actions = ["approve_reviews", "feature_reviews"]
-
-    def stars(self, obj):
-        return format_html('<span style="color:#f59e0b">{}</span><span style="color:#cbd5e1">{}</span>',
-                           "★" * obj.rating, "★" * (5 - obj.rating))
-    stars.short_description = "Rating"
-
-    def verified_guest(self, obj):
-        return bool(obj.booking_id)
-    verified_guest.boolean = True
-    verified_guest.short_description = "Verified"
-
-    def approve_reviews(self, request, queryset):
-        n = queryset.update(is_approved=True)
-        self.message_user(request, f"Approved {n} reviews.")
-    approve_reviews.short_description = "Approve selected reviews"
-
-    def feature_reviews(self, request, queryset):
-        n = queryset.update(is_approved=True, is_featured=True)
-        self.message_user(request, f"Featured {n} reviews.")
-    feature_reviews.short_description = "Approve + feature on homepage"
 
 
 def reports_dashboard(request):
