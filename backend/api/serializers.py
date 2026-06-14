@@ -33,6 +33,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
         fields = ("site_name", "tagline", "seo_title", "seo_description", "seo_keywords",
                   "contact_email", "contact_phone", "address", "meeting_instructions",
                   "hours", "maps_url", "map_embed_url", "price_blurb",
+                  "review_count", "average_rating",
                   "google_analytics_id", "google_tag_manager_id", "google_ads_id",
                   "google_ads_booking_conversion_label", "meta_pixel_id",
                   "facebook_url", "instagram_url", "youtube_url", "tiktok_url",

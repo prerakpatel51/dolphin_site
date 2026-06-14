@@ -526,9 +526,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                              "classes": ("collapse",)}),
         ("Social links", {"fields": ("facebook_url", "instagram_url", "youtube_url",
                                      "tiktok_url", "tripadvisor_url")}),
-        ("Google reviews", {"fields": ("google_business_url", "google_review_url",
+        ("Google reviews", {"fields": ("average_rating", "review_count",
+                                       "google_business_url", "google_review_url",
                                        "google_reviews_url", "google_reviews_embed_url"),
-                            "description": "Public review buttons use these URLs instead of the old on-site review form."}),
+                            "description": "Rating and review count shown on the home page, reviews panel, and Google rich-results schema. Public review buttons use these URLs."}),
         ("Footer", {"fields": ("footer_legal_text",)}),
         ("Robots.txt", {"fields": ("robots_txt",), "classes": ("collapse",)}),
     )
