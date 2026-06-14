@@ -183,13 +183,28 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     slot_id = serializers.PrimaryKeyRelatedField(queryset=TourSlot.objects.filter(is_active=True), source="slot", write_only=True)
     promo_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
     travelers = serializers.ListField(child=serializers.DictField(), required=True, allow_empty=False)
+    customer_first_name = serializers.CharField(max_length=60)
+    customer_last_name = serializers.CharField(max_length=60)
 
     class Meta:
         model = Booking
-        fields = ("slot_id", "party_size", "customer_name", "customer_email", "customer_phone", "travelers", "special_requests", "promo_code")
+        fields = ("slot_id", "party_size", "customer_first_name", "customer_last_name",
+                  "customer_email", "customer_phone", "travelers", "special_requests", "promo_code")
 
     def validate_party_size(self, v):
         return v
+
+    def validate_customer_first_name(self, value):
+        value = re.sub(r"\s+", " ", value or "").strip()
+        if not value:
+            raise serializers.ValidationError("First name is required.")
+        return value
+
+    def validate_customer_last_name(self, value):
+        value = re.sub(r"\s+", " ", value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Last name is required.")
+        return value
 
     def validate_customer_phone(self, value):
         value = (value or "").strip()
@@ -237,7 +252,8 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = ("id", "slot", "party_size", "price_per_person_cents", "tax_cents", "total_cents", "total_dollars",
                   "discount_cents", "promo_code_label",
-                  "status", "customer_name", "customer_email", "customer_phone", "travelers", "special_requests",
+                  "status", "customer_first_name", "customer_last_name", "customer_name",
+                  "customer_email", "customer_phone", "travelers", "special_requests",
                   "created_at")
         read_only_fields = fields
 
@@ -259,21 +275,17 @@ class BookingLookupResultSerializer(serializers.ModelSerializer):
     """
     slot = TourSlotSerializer(read_only=True)
     promo_code_label = serializers.SerializerMethodField()
-    customer_last_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
         fields = ("id", "slot", "party_size", "price_per_person_cents", "tax_cents",
                   "total_cents", "discount_cents", "promo_code_label", "status",
-                  "customer_name", "customer_email", "customer_last_name", "created_at")
+                  "customer_name", "customer_first_name", "customer_last_name",
+                  "customer_email", "created_at")
         read_only_fields = fields
 
     def get_promo_code_label(self, obj):
         return obj.promo_code.code if obj.promo_code else ""
-
-    def get_customer_last_name(self, obj):
-        parts = (obj.customer_name or "").strip().split()
-        return parts[-1] if parts else ""
 
 
 class BookingLookupSerializer(serializers.Serializer):

@@ -842,11 +842,11 @@ class CancelBookingForm(forms.Form):
 class BookingAdmin(admin.ModelAdmin):
     list_display = ("customer_name", "customer_email", "slot", "party_size", "total_display", "status", "payment_refs", "cancel_link", "created_at")
     list_filter = ("status", "slot__date", "slot__tour")
-    search_fields = ("customer_name", "customer_email", "square_payment_id", "id")
+    search_fields = ("customer_name", "customer_first_name", "customer_last_name", "customer_email", "square_payment_id", "id")
     readonly_fields = ("id", "square_payment_id", "square_order_id", "tax_cents", "total_cents", "traveler_list", "created_at", "updated_at")
     fieldsets = (
         ("Booking", {"fields": ("id", "user", "slot", "party_size", "status")}),
-        ("Customer", {"fields": ("customer_name", "customer_email", "customer_phone")}),
+        ("Customer", {"fields": ("customer_first_name", "customer_last_name", "customer_name", "customer_email", "customer_phone")}),
         ("Travelers", {"fields": ("traveler_list", "travelers")}),
         ("Payment", {"fields": ("price_per_person_cents", "discount_cents", "tax_cents", "total_cents", "promo_code", "square_payment_id", "square_order_id")}),
         ("Notes", {"fields": ("special_requests",)}),

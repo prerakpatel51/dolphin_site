@@ -94,8 +94,10 @@ export default function FindBooking() {
             className="input"
             value={form.last_name}
             onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))}
+            placeholder="e.g. Patel"
             required
           />
+          <p className="text-xs text-ocean-500 mt-1">The last name entered on the booking.</p>
         </div>
         <button className="btn-primary disabled:opacity-50" disabled={busy}>
           {busy ? "Searching..." : "Find booking"}
@@ -129,6 +131,9 @@ export default function FindBooking() {
                   {bookingDate(booking)} at {booking.slot.time.slice(0, 5)} · {booking.party_size} guests
                 </div>
                 <div className="text-ocean-600 text-sm mt-1">
+                  Booked by {booking.customer_name}
+                </div>
+                <div className="text-ocean-600 text-sm">
                   Confirmation #{booking.id}
                 </div>
               </div>

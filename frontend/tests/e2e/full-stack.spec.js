@@ -102,7 +102,8 @@ test("full local stack supports guest booking, receipt download, Google reviews,
 
   await expect(page).toHaveURL(/\/book\/dolphin-wildlife-excursion\?slot=\d+/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Contact & payment" })).toBeVisible({ timeout: 15_000 });
-  await page.getByLabel("Full name").fill(`${user.firstName} ${user.lastName}`);
+  await page.getByLabel("First name").fill(user.firstName);
+  await page.getByLabel("Last name").fill(user.lastName);
   await page.getByLabel("Email").fill(user.email);
   await page.getByLabel("Phone").fill(user.phone);
   await expect(page.getByText("Test mode - fake payment")).toBeVisible();

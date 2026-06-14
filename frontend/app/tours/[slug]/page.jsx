@@ -1,5 +1,6 @@
 import TourDetail from "../../../src/views/TourDetail.jsx";
-import { getTour, getTourDates, metadataForPath } from "../../../src/lib/serverApi.js";
+import { getTour, getTourDates, getSite, metadataForPath } from "../../../src/lib/serverApi.js";
+import { tourJsonLd, jsonLdScript } from "../../../src/lib/jsonld.js";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -16,6 +17,17 @@ export async function generateMetadata({ params }) {
 
 export default async function Page({ params }) {
   const { slug } = await params;
-  const [tour, dates] = await Promise.all([getTour(slug), getTourDates(slug)]);
-  return <TourDetail initialTour={tour} initialDates={dates} />;
+  const [tour, dates, site] = await Promise.all([getTour(slug), getTourDates(slug), getSite()]);
+  const ld = tour ? tourJsonLd(tour, site) : null;
+  return (
+    <>
+      {ld && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }}
+        />
+      )}
+      <TourDetail initialTour={tour} initialDates={dates} />
+    </>
+  );
 }

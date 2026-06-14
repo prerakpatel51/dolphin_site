@@ -137,7 +137,8 @@ test("allows anonymous visitors to complete checkout without login", async () =>
   expect(screen.queryByText("Please log in to book.")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Pretend to pay $180.00" })).toBeDisabled();
 
-  await user.type(screen.getByLabelText(/^Full name/), "Guest Buyer");
+  await user.type(screen.getByLabelText(/^First name/), "Guest");
+  await user.type(screen.getByLabelText(/^Last name/), "Buyer");
   await user.type(screen.getByLabelText(/^Email/), "guest@example.com");
   await user.type(screen.getByLabelText(/^Phone/), "3215550100");
 
@@ -161,7 +162,8 @@ test("loads pending traveler details and applies a promo code to the total", asy
   expect(await screen.findByRole("heading", { name: "Contact & payment" })).toBeInTheDocument();
   expect(screen.getByText("Alex Rider")).toBeInTheDocument();
 
-  await user.type(screen.getByLabelText(/^Full name/), "Guest User");
+  await user.type(screen.getByLabelText(/^First name/), "Guest");
+  await user.type(screen.getByLabelText(/^Last name/), "User");
   await user.type(screen.getByLabelText(/^Email/), "guest@example.com");
   await user.type(screen.getByLabelText(/^Phone/), "5551234567");
   expect(screen.getByRole("button", { name: "Pretend to pay $180.00" })).toBeEnabled();
@@ -193,7 +195,8 @@ test("keeps promo discounts cents-accurate in checkout totals", async () => {
   renderBook();
 
   expect(await screen.findByRole("heading", { name: "Contact & payment" })).toBeInTheDocument();
-  await user.type(screen.getByLabelText(/^Full name/), "Guest User");
+  await user.type(screen.getByLabelText(/^First name/), "Guest");
+  await user.type(screen.getByLabelText(/^Last name/), "User");
   await user.type(screen.getByLabelText(/^Email/), "guest@example.com");
   await user.type(screen.getByLabelText(/^Phone/), "5551234567");
   await user.type(screen.getByLabelText("Promo code (optional)"), "cents");
@@ -211,7 +214,8 @@ test("submits the fake-payment booking and clears pending session state", async 
   renderBook();
 
   expect(await screen.findByRole("heading", { name: "Contact & payment" })).toBeInTheDocument();
-  await user.type(screen.getByLabelText(/^Full name/), "Guest User");
+  await user.type(screen.getByLabelText(/^First name/), "Guest");
+  await user.type(screen.getByLabelText(/^Last name/), "User");
   await user.type(screen.getByLabelText(/^Email/), "guest@example.com");
   await user.type(screen.getByLabelText(/^Phone/), "5551234567");
 
@@ -225,7 +229,8 @@ test("submits the fake-payment booking and clears pending session state", async 
       { name: "Sam Rider", age: 31 },
       { name: "Taylor Rider", age: 9 },
     ],
-    customer_name: "Guest User",
+    customer_first_name: "Guest",
+    customer_last_name: "User",
     customer_email: "guest@example.com",
     customer_phone: "5551234567",
     special_requests: "",

@@ -52,7 +52,8 @@ export default function Book() {
   const [pendingMissing, setPendingMissing] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [form, setForm] = useState({
-    customer_name: "",
+    customer_first_name: "",
+    customer_last_name: "",
     customer_email: "",
     customer_phone: "",
     special_requests: "",
@@ -206,8 +207,8 @@ export default function Book() {
   const estimatedTaxCents = Math.round(taxableTotalCents * taxRate / 100);
   const totalCents = taxableTotalCents + estimatedTaxCents;
   const canSubmit = !pendingMissing && partySize > 0 && travelers.length === partySize
-    && partySize <= slot.seats_remaining && form.customer_name && form.customer_email
-    && /^\d{10}$/.test(form.customer_phone);
+    && partySize <= slot.seats_remaining && form.customer_first_name.trim() && form.customer_last_name.trim()
+    && form.customer_email && /^\d{10}$/.test(form.customer_phone);
 
   async function applyPromo() {
     setPromoBusy(true); setPromoErr("");
@@ -326,7 +327,8 @@ export default function Book() {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field id="booking-name" label="Full name" value={form.customer_name} onChange={v => setForm(f => ({ ...f, customer_name: v }))} required />
+            <Field id="booking-first-name" label="First name" value={form.customer_first_name} onChange={v => setForm(f => ({ ...f, customer_first_name: v }))} required />
+            <Field id="booking-last-name" label="Last name" value={form.customer_last_name} onChange={v => setForm(f => ({ ...f, customer_last_name: v }))} required helper="Used to find your booking later." />
             <Field
               id="booking-email"
               label="Email"

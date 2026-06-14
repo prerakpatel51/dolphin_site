@@ -190,7 +190,8 @@ test("checkout promo flow validates code and updates total", async ({ page }) =>
 
   await page.goto("/book/wildlife?slot=101");
   await expect(page.getByRole("heading", { name: "Contact & payment" })).toBeVisible();
-  await page.getByLabel("Full name").fill("Guest Buyer");
+  await page.getByLabel("First name").fill("Guest");
+  await page.getByLabel("Last name").fill("Buyer");
   await page.getByLabel("Email").fill("guest@example.com");
   await page.getByLabel("Phone").fill("3215550100");
   await page.getByPlaceholder("E.g. DI1-AB23CD").fill("save25");

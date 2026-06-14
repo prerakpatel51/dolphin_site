@@ -99,7 +99,8 @@ class ApiTestCase(TestCase):
         payload = {
             "slot_id": self.slot.id,
             "party_size": 3,
-            "customer_name": "Guest User",
+            "customer_first_name": "Guest",
+            "customer_last_name": "User",
             "customer_email": TEST_USER_EMAIL,
             "customer_phone": "5550000100",
             "travelers": [
@@ -122,6 +123,8 @@ class ApiTestCase(TestCase):
             price_per_person_cents=slot.tour.price_per_person * 100,
             total_cents=slot.tour.price_per_person * 100 * party_size,
             status="paid",
+            customer_first_name="Guest",
+            customer_last_name="User",
             customer_name="Guest User",
             customer_email=email or user.email,
             travelers=[
@@ -139,6 +142,8 @@ class ApiTestCase(TestCase):
             price_per_person_cents=slot.tour.price_per_person * 100,
             total_cents=slot.tour.price_per_person * 100 * party_size,
             status="pending",
+            customer_first_name="Guest",
+            customer_last_name="User",
             customer_name="Guest User",
             customer_email=self.user.email,
             travelers=[
@@ -243,6 +248,44 @@ class SeedCommandTests(TestCase):
         self.assertFalse(tour.is_active)
         self.assertEqual(tour.sort_order, 99)
         self.assertEqual(tour.seo_title, "Custom SEO")
+
+
+class OptimizeSeoCommandTests(TestCase):
+    def test_optimize_seo_updates_site_pages_and_tours_without_touching_copy(self):
+        from api import seo_content
+
+        PageContent.objects.update_or_create(
+            page="home",
+            defaults={"hero_title": "Keep me", "seo_title": "old", "seo_description": "old", "seo_keywords": "old"},
+        )
+        listed = Tour.objects.create(
+            slug="dolphin-wildlife-excursion", name="Dolphin Wildlife Excursion",
+            short_description="keep", long_description="keep", duration_minutes=120,
+            price_per_person=60, min_party=3, max_party=6,
+        )
+        future = Tour.objects.create(
+            slug="manatee-eco-tour", name="Manatee Eco Tour",
+            short_description="keep", long_description="keep", duration_minutes=90,
+            price_per_person=70, min_party=2, max_party=6,
+        )
+
+        call_command("optimize_seo")
+
+        settings = SiteSettings.get()
+        self.assertEqual(settings.seo_title, seo_content.SITE["seo_title"])
+
+        home = PageContent.objects.get(page="home")
+        self.assertEqual(home.seo_title, seo_content.PAGES["home"]["seo_title"])
+        self.assertEqual(home.hero_title, "Keep me")  # copy untouched
+
+        listed.refresh_from_db()
+        self.assertEqual(listed.seo_title, seo_content.TOURS["dolphin-wildlife-excursion"]["seo_title"])
+        self.assertEqual(listed.short_description, "keep")  # copy untouched
+
+        future.refresh_from_db()
+        # Tours not in the curated map still get ranking-ready, geo-rich SEO.
+        self.assertIn("Manatee Eco Tour", future.seo_title)
+        self.assertIn("Merritt Island", future.seo_keywords)
 
 
 class PublicSiteAndSeoTests(ApiTestCase):
@@ -618,8 +661,10 @@ class AuthContactAndSlotSafetyTests(ApiTestCase):
 class BookingAndPromoTests(ApiTestCase):
     def test_guest_lookup_returns_matching_booking_by_email_and_last_name(self):
         booking = self.create_paid_booking(user=None, email="guest.lookup@example.com")
+        booking.customer_first_name = "Alex"
+        booking.customer_last_name = "Buyer"
         booking.customer_name = "Alex Buyer"
-        booking.save(update_fields=["customer_name"])
+        booking.save(update_fields=["customer_first_name", "customer_last_name", "customer_name"])
 
         res = self.post_json("/api/bookings/lookup/", {
             "email": "GUEST.LOOKUP@example.com",
@@ -631,11 +676,14 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(len(body["results"]), 1)
         self.assertEqual(body["results"][0]["id"], str(booking.id))
         self.assertEqual(body["results"][0]["customer_email"], "guest.lookup@example.com")
+        self.assertEqual(body["results"][0]["customer_last_name"], "Buyer")
 
     def test_guest_lookup_does_not_return_wrong_last_name(self):
         booking = self.create_paid_booking(user=None, email="guest.lookup@example.com")
+        booking.customer_first_name = "Alex"
+        booking.customer_last_name = "Buyer"
         booking.customer_name = "Alex Buyer"
-        booking.save(update_fields=["customer_name"])
+        booking.save(update_fields=["customer_first_name", "customer_last_name", "customer_name"])
 
         res = self.post_json("/api/bookings/lookup/", {
             "email": "guest.lookup@example.com",
@@ -655,6 +703,9 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(body["slot"]["seats_remaining"], 3)
         self.assertEqual(len(body["travelers"]), 3)
         self.assertEqual(body["travelers"][0]["name"], "Guest User")
+        self.assertEqual(body["customer_first_name"], "Guest")
+        self.assertEqual(body["customer_last_name"], "User")
+        self.assertEqual(body["customer_name"], "Guest User")
         self.assertTrue(Booking.objects.filter(user__isnull=True, customer_email=TEST_USER_EMAIL, status="paid").exists())
         audit = ActivityLog.objects.get(action="booking_payment_verified")
         self.assertEqual(audit.actor, TEST_USER_EMAIL)
@@ -674,6 +725,30 @@ class BookingAndPromoTests(ApiTestCase):
                 status="pending",
             ).exists()
         )
+
+    def test_create_and_pay_requires_first_and_last_name(self):
+        missing_last = self.post_json(
+            "/api/bookings/create-and-pay/",
+            self.booking_payload(customer_last_name="   "),
+        )
+        self.assertEqual(missing_last.status_code, 400)
+        self.assertIn("customer_last_name", missing_last.json())
+        self.assertEqual(Booking.objects.count(), 0)
+
+    def test_guest_lookup_falls_back_to_full_name_for_legacy_bookings(self):
+        booking = self.create_paid_booking(user=None, email="legacy@example.com")
+        # Legacy row: only the combined name was stored.
+        Booking.objects.filter(pk=booking.pk).update(
+            customer_first_name="", customer_last_name="", customer_name="Jordan Rivera",
+        )
+
+        res = self.post_json("/api/bookings/lookup/", {
+            "email": "legacy@example.com",
+            "last_name": "Rivera",
+        })
+
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(len(res.json()["results"]), 1)
 
     @override_settings(FAKE_PAYMENTS=False)
     def test_real_payment_mode_requires_source_id_before_creating_booking(self):
@@ -831,6 +906,43 @@ class BookingAndPromoTests(ApiTestCase):
         self.assertEqual(second.status_code, 400)
         self.assertEqual(Booking.objects.count(), 1)
         self.assertFalse(validate_again.json()["valid"])
+
+    @override_settings(FAKE_PAYMENTS=False)
+    def test_declined_payment_releases_single_use_promo_hold(self):
+        PromoCode.objects.create(code="ONCE", kind="percent", percent_off=25, max_uses=1)
+
+        with patch("api.views.charge", side_effect=RuntimeError("Square error: CARD_DECLINED")):
+            declined = self.post_json(
+                "/api/bookings/create-and-pay/",
+                self.booking_payload(source_id="cnon:card-nonce", promo_code="ONCE"),
+            )
+
+        self.assertEqual(declined.status_code, 402)
+        # Hold released: the code is redeemable again.
+        self.assertEqual(PromoCode.objects.get(code="ONCE").used_count, 0)
+        retry = self.post_json(
+            "/api/promo/validate/",
+            {"code": "ONCE", "email": TEST_USER_EMAIL, "subtotal_cents": 12000},
+        )
+        self.assertTrue(retry.json()["valid"])
+
+    @override_settings(PENDING_BOOKING_EXPIRY_MINUTES=15)
+    def test_expired_pending_hold_releases_promo(self):
+        promo = PromoCode.objects.create(code="HOLD", kind="percent", percent_off=10, max_uses=1)
+        pending = self.create_pending_booking(party_size=2, minutes_old=20)
+        Booking.objects.filter(pk=pending.pk).update(promo_code=promo)
+        PromoCode.objects.filter(pk=promo.pk).update(used_count=1)
+
+        call_command("expire_pending_bookings", verbosity=0)
+
+        pending.refresh_from_db()
+        promo.refresh_from_db()
+        self.assertEqual(pending.status, "expired")
+        self.assertEqual(promo.used_count, 0)
+
+    def test_promo_code_is_stored_uppercased(self):
+        promo = PromoCode.objects.create(code="  summer-deal ", kind="percent", percent_off=10)
+        self.assertEqual(promo.code, "SUMMER-DEAL")
 
     def test_locked_promo_authorization_uses_booking_email(self):
         PromoCode.objects.create(

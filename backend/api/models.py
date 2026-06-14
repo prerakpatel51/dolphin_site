@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import close_old_connections
 from django.db.models.functions import Lower
 from django.db.models.signals import post_delete, post_save, pre_delete
@@ -606,6 +607,8 @@ class Booking(models.Model):
     status = models.CharField(max_length=16, choices=STATUS, default="pending")
     square_payment_id = models.CharField(max_length=128, blank=True)
     square_order_id = models.CharField(max_length=128, blank=True)
+    customer_first_name = models.CharField(max_length=60, blank=True)
+    customer_last_name = models.CharField(max_length=60, blank=True)
     customer_name = models.CharField(max_length=120)
     customer_email = models.EmailField()
     customer_phone = models.CharField(max_length=32, blank=True)
@@ -790,7 +793,11 @@ class PromoCode(models.Model):
     code = models.CharField(max_length=40, unique=True)
     label = models.CharField(max_length=120, blank=True, help_text="Internal name, e.g. 'Summer 10% blast'")
     kind = models.CharField(max_length=10, choices=KIND, default="percent")
-    percent_off = models.PositiveSmallIntegerField(default=10, help_text="Used when kind=percent. 1–100.")
+    percent_off = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        help_text="Used when kind=percent. 1–100.",
+    )
     amount_off_cents = models.PositiveIntegerField(default=0, help_text="Used when kind=amount. Cents.")
     max_uses = models.PositiveIntegerField(default=1, help_text="0 = unlimited.")
     used_count = models.PositiveIntegerField(default=0)
@@ -809,6 +816,13 @@ class PromoCode(models.Model):
 
     def __str__(self):
         return self.code
+
+    def save(self, *args, **kwargs):
+        # Codes are matched case-insensitively; storing them upper-cased keeps
+        # the unique constraint from allowing "SAVE10" and "save10" to coexist.
+        if self.code:
+            self.code = self.code.strip().upper()
+        super().save(*args, **kwargs)
 
     def is_redeemable(self, email=None):
         from django.utils import timezone as tz

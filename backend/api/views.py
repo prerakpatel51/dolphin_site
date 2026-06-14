@@ -4,7 +4,7 @@ from django.core.cache import cache
 from django.core import signing
 from django.db import IntegrityError, transaction
 from django.db.models import F, IntegerField, Q, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Greatest
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
 from rest_framework import viewsets, mixins
@@ -51,13 +51,35 @@ def with_booked_seats(qs):
     )
 
 
+def release_promo_holds(promo_ids):
+    """Give back the reserved use on each promo (clamped at zero)."""
+    from collections import Counter
+
+    for promo_id, count in Counter(pid for pid in promo_ids if pid).items():
+        PromoCode.objects.filter(pk=promo_id).update(
+            used_count=Greatest(F("used_count") - count, Value(0), output_field=IntegerField())
+        )
+
+
+def expire_pending_holds():
+    """Expire stale pending bookings and release the promo uses they reserved."""
+    minutes = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_MINUTES", 15)))
+    cutoff = timezone.now() - timedelta(minutes=minutes)
+    with transaction.atomic():
+        stale = (Booking.objects.select_for_update()
+                 .filter(status="pending", updated_at__lt=cutoff))
+        promo_ids = list(stale.values_list("promo_code_id", flat=True))
+        expired = stale.update(status="expired")
+        # Expired holds never paid, so return the promo use they reserved.
+        release_promo_holds(promo_ids)
+    return expired
+
+
 def expire_stale_pending_bookings():
     interval = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_CHECK_SECONDS", 30)))
     if not cache.add("pending-booking-expiry-lock", "1", timeout=interval):
         return 0
-    minutes = max(1, int(getattr(settings, "PENDING_BOOKING_EXPIRY_MINUTES", 15)))
-    cutoff = timezone.now() - timedelta(minutes=minutes)
-    return Booking.objects.filter(status="pending", updated_at__lt=cutoff).update(status="expired")
+    return expire_pending_holds()
 
 
 def client_ip(request):
@@ -163,9 +185,14 @@ class BookingViewSet(viewsets.GenericViewSet):
     queryset = Booking.objects.none()
 
     @action(detail=False, methods=["post"], url_path="create-and-pay")
-    @transaction.atomic
     def create_and_pay(self, request):
-        """Create booking + charge Square in one shot."""
+        """Reserve a pending booking, charge Square, then confirm.
+
+        Seats and any promo use are reserved inside a short transaction so the
+        external payment call does not hold row locks. If the charge fails the
+        hold is released; expired holds are released by
+        ``expire_stale_pending_bookings``.
+        """
         expire_stale_pending_bookings()
         create_ser = BookingCreateSerializer(data=request.data)
         create_ser.is_valid(raise_exception=True)
@@ -173,61 +200,77 @@ class BookingViewSet(viewsets.GenericViewSet):
         rate_identifier = str(request.user.pk) if request.user.is_authenticated else data["customer_email"].lower()
         if rate_limited(request, "booking_create", rate_identifier, limit=10, window=10 * 60):
             return Response({"detail": "Too many booking attempts. Try again later."}, status=429)
-        try:
-            locked_slot = (TourSlot.objects.select_for_update()
-                           .select_related("tour")
-                           .get(pk=data["slot"].pk, is_active=True))
-        except TourSlot.DoesNotExist:
-            return Response({"slot_id": "This departure is no longer bookable."}, status=400)
-        if locked_slot.date < timezone.now().date():
-            return Response({"slot_id": "This departure is no longer bookable."}, status=400)
-        if data["party_size"] > locked_slot.seats_remaining:
-            return Response({"party_size": f"Only {locked_slot.seats_remaining} seats remaining."}, status=400)
-        data["slot"] = locked_slot
 
         source_id = request.data.get("source_id")
         if not source_id and not settings.FAKE_PAYMENTS:
             return Response({"detail": "Missing payment source_id."}, status=400)
 
-        price = data["slot"].tour.price_per_person * 100
-        subtotal = price * data["party_size"]
-
-        promo_obj = None
-        discount = 0
         promo_str = (request.data.get("promo_code") or "").strip()
-        if promo_str:
-            try:
-                pc = PromoCode.objects.select_for_update().get(code__iexact=promo_str)
-                promo_email = request.user.email if request.user.is_authenticated else data["customer_email"]
-                ok, reason = pc.is_redeemable(email=promo_email)
-                if not ok:
-                    return Response({"promo_code": reason}, status=400)
-                promo_obj = pc
-                discount = pc.discount_for(subtotal)
-            except PromoCode.DoesNotExist:
-                return Response({"promo_code": "Invalid promo code."}, status=400)
-        taxable_total = max(0, subtotal - discount)
-        tax_rate_percent = data["slot"].tour.tax_rate_percent
-        tax = tax_cents_for(taxable_total, tax_rate_percent)
-        total = taxable_total + tax
+        promo_email = request.user.email if request.user.is_authenticated else data["customer_email"]
 
-        booking = Booking.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            slot=data["slot"],
-            party_size=data["party_size"],
-            price_per_person_cents=price,
-            tax_cents=tax,
-            total_cents=total,
-            customer_name=data["customer_name"],
-            customer_email=data["customer_email"],
-            customer_phone=data.get("customer_phone", ""),
-            travelers=data.get("travelers", []),
-            special_requests=data.get("special_requests", ""),
-            promo_code=promo_obj,
-            discount_cents=discount,
-            status="pending",
-        )
+        # ---- Reserve seats + promo hold in a short transaction (no payment yet). ----
+        try:
+            with transaction.atomic():
+                locked_slot = (TourSlot.objects.select_for_update()
+                               .select_related("tour")
+                               .get(pk=data["slot"].pk, is_active=True))
+                if locked_slot.date < timezone.now().date():
+                    return Response({"slot_id": "This departure is no longer bookable."}, status=400)
+                if data["party_size"] > locked_slot.seats_remaining:
+                    return Response({"party_size": f"Only {locked_slot.seats_remaining} seats remaining."}, status=400)
 
+                price = locked_slot.tour.price_per_person * 100
+                subtotal = price * data["party_size"]
+                tax_rate_percent = locked_slot.tour.tax_rate_percent
+
+                promo_obj = None
+                discount = 0
+                if promo_str:
+                    try:
+                        pc = PromoCode.objects.select_for_update().get(code__iexact=promo_str)
+                    except PromoCode.DoesNotExist:
+                        return Response({"promo_code": "Invalid promo code."}, status=400)
+                    except PromoCode.MultipleObjectsReturned:
+                        logger.error("Duplicate promo codes share the spelling %r.", promo_str)
+                        return Response({"promo_code": "Invalid promo code."}, status=400)
+                    ok, reason = pc.is_redeemable(email=promo_email)
+                    if not ok:
+                        return Response({"promo_code": reason}, status=400)
+                    promo_obj = pc
+                    discount = pc.discount_for(subtotal)
+
+                taxable_total = max(0, subtotal - discount)
+                tax = tax_cents_for(taxable_total, tax_rate_percent)
+                total = taxable_total + tax
+
+                first_name = data["customer_first_name"]
+                last_name = data["customer_last_name"]
+                booking = Booking.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    slot=locked_slot,
+                    party_size=data["party_size"],
+                    price_per_person_cents=price,
+                    tax_cents=tax,
+                    total_cents=total,
+                    customer_first_name=first_name,
+                    customer_last_name=last_name,
+                    customer_name=f"{first_name} {last_name}".strip(),
+                    customer_email=data["customer_email"],
+                    customer_phone=data.get("customer_phone", ""),
+                    travelers=data.get("travelers", []),
+                    special_requests=data.get("special_requests", ""),
+                    promo_code=promo_obj,
+                    discount_cents=discount,
+                    status="pending",
+                )
+                if promo_obj:
+                    # Reserve the redemption now so concurrent single-use
+                    # attempts are blocked while this booking is paid for.
+                    PromoCode.objects.filter(pk=promo_obj.pk).update(used_count=F("used_count") + 1)
+        except TourSlot.DoesNotExist:
+            return Response({"slot_id": "This departure is no longer bookable."}, status=400)
+
+        # ---- Charge outside the transaction so no row locks are held. ----
         if settings.FAKE_PAYMENTS:
             payment = {"id": f"FAKE-{booking.id}", "order_id": "FAKE-ORDER"}
         else:
@@ -236,17 +279,19 @@ class BookingViewSet(viewsets.GenericViewSet):
                     source_id,
                     total,
                     data["customer_email"],
-                    note=f"Dolphin tour {data['slot'].date} {data['slot'].time}",
+                    note=f"Dolphin tour {locked_slot.date} {locked_slot.time}",
                     subtotal_cents=subtotal,
                     discount_cents=discount,
                     tax_cents=tax,
                     tax_rate_percent=tax_rate_percent,
-                    item_name=data["slot"].tour.name,
+                    item_name=locked_slot.tour.name,
                 )
             except Exception as e:
                 logger.exception("Payment failed for booking %s.", booking.id)
-                booking.status = "payment_failed"
-                booking.save(update_fields=["status", "updated_at"])
+                with transaction.atomic():
+                    Booking.objects.filter(pk=booking.pk).update(status="payment_failed", updated_at=timezone.now())
+                    if promo_obj:
+                        release_promo_holds([promo_obj.pk])
                 ActivityLog.log(
                     "booking_payment_failed",
                     actor=request.user.email if request.user.is_authenticated else data["customer_email"],
@@ -260,10 +305,15 @@ class BookingViewSet(viewsets.GenericViewSet):
                 )
                 return Response({"detail": PAYMENT_FAILED_MESSAGE}, status=402)
 
-        booking.square_payment_id = payment.get("id", "")
-        booking.square_order_id = payment.get("order_id", "")
-        booking.status = "paid"
-        booking.save()
+        # ---- Confirm the booking in a short transaction. ----
+        with transaction.atomic():
+            Booking.objects.filter(pk=booking.pk).update(
+                square_payment_id=payment.get("id", ""),
+                square_order_id=payment.get("order_id", ""),
+                status="paid",
+                updated_at=timezone.now(),
+            )
+        booking.refresh_from_db()
         logger.info("Payment verified for booking %s.", booking.id)
         ActivityLog.log(
             "booking_payment_verified",
@@ -297,10 +347,6 @@ class BookingViewSet(viewsets.GenericViewSet):
         except Exception:
             logger.exception("Booking confirmation email queueing failed for booking %s.", booking.id)
 
-        if promo_obj:
-            promo_obj.used_count = F("used_count") + 1
-            promo_obj.save(update_fields=["used_count"])
-
         return Response(BookingSerializer(booking).data, status=201)
 
 
@@ -321,8 +367,13 @@ def booking_lookup(request):
     )
     matches = []
     for booking in bookings:
-        name_parts = (booking.customer_name or "").strip().split()
-        if name_parts and name_parts[-1].lower() == last_name:
+        # Prefer the dedicated last-name field; fall back to the last token of
+        # the full name for legacy bookings created before the field existed.
+        booking_last = (booking.customer_last_name or "").strip().lower()
+        if not booking_last:
+            name_parts = (booking.customer_name or "").strip().split()
+            booking_last = name_parts[-1].lower() if name_parts else ""
+        if booking_last and booking_last == last_name:
             matches.append(booking)
     return Response({"results": BookingLookupResultSerializer(matches, many=True).data})
 
@@ -356,6 +407,9 @@ def validate_promo(request):
     try:
         pc = PromoCode.objects.get(code__iexact=code)
     except PromoCode.DoesNotExist:
+        return Response({"valid": False, "reason": "Invalid code."}, status=200)
+    except PromoCode.MultipleObjectsReturned:
+        logger.error("Duplicate promo codes share the spelling %r.", code)
         return Response({"valid": False, "reason": "Invalid code."}, status=200)
     ok, reason = pc.is_redeemable(email=s.validated_data.get("email", ""))
     if not ok:
