@@ -75,7 +75,7 @@ export default function FindBooking() {
         </p>
       </div>
 
-      <form onSubmit={submit} className="card p-5 sm:p-6 grid sm:grid-cols-[minmax(0,1fr)_220px_auto] gap-4 items-end">
+      <form onSubmit={submit} className="card p-5 sm:p-6 grid sm:grid-cols-[minmax(0,1fr)_220px_auto] gap-x-4 gap-y-1 items-end">
         <div>
           <label className="label" htmlFor="lookup-email">Email</label>
           <input
@@ -97,11 +97,11 @@ export default function FindBooking() {
             placeholder="e.g. Patel"
             required
           />
-          <p className="text-xs text-ocean-500 mt-1">The last name entered on the booking.</p>
         </div>
         <button className="btn-primary disabled:opacity-50" disabled={busy}>
           {busy ? "Searching..." : "Find booking"}
         </button>
+        <p className="text-xs text-ocean-500 sm:col-span-3 mt-1">The last name entered on the booking.</p>
       </form>
 
       {error && (
