@@ -180,7 +180,7 @@ export default function Home({ initialSite, initialTours = [] }) {
           <p className="text-xl sm:text-3xl font-display leading-snug">
             "We started Dolphin Island Tours so visitors could really see the Space Coast - personally, privately, and the way the locals do."
           </p>
-          <p className="mt-6 text-ocean-200">— Lewis, Captain &amp; Founder</p>
+          <p className="mt-6 text-ocean-200">— Lewis, Captain &amp; Founder · Lauren, Founder</p>
           <Link to="/about" className="btn-ghost mt-8 inline-flex">Our story →</Link>
         </div>
       </section>
