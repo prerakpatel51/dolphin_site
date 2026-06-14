@@ -17,6 +17,18 @@ GEO = (
     "Indian River Lagoon, Banana River"
 )
 
+# Broad long-tail + intent keywords appended to every page.
+EXTRA = (
+    "boat tours near me, dolphin watching near me, things to do on the Space Coast, "
+    "things to do in Cocoa Beach, things to do in Melbourne FL, things to do in Merritt Island, "
+    "Brevard County attractions, family friendly boat tour, kids boat tour, private boat charter near me, "
+    "small group boat tour, wildlife sightseeing cruise, eco tour Florida, nature boat tour, "
+    "Port Canaveral excursion, cruise port shore excursion, romantic things to do Space Coast, "
+    "anniversary boat tour, birthday boat tour, bachelorette boat tour, group boat tour, "
+    "Florida vacation boat tour, half day boat tour, scenic boat ride, photography boat tour, "
+    "manatee season tour, best dolphin tour near Cocoa Beach, top rated boat tour Brevard"
+)
+
 SITE = {
     "site_name": "Dolphin Island Tours",
     "tagline": "Private Space Coast boat tours, dolphin watching, sunset cruises, and rocket launch viewing.",
@@ -29,7 +41,7 @@ SITE = {
         "boat tours Space Coast, dolphin tours Florida, dolphin watching Merritt Island, Cocoa Beach boat tour, "
         "Melbourne FL boat tour, Brevard County boat tours, manatee tour, sunset cruise, rocket launch boat tour, "
         "Indian River Lagoon tour, private boat charter Florida, Dolphin Island Tours, things to do Cocoa Beach, "
-        f"things to do Space Coast, boat tours near me, {GEO}"
+        f"things to do Space Coast, boat tours near me, {GEO}, {EXTRA}"
     ),
 }
 
@@ -44,7 +56,7 @@ PAGES = {
             "Space Coast boat tours, dolphin tours Merritt Island, Cocoa Beach dolphin watching, "
             "Melbourne FL boat tour, Viera boat tour, Rockledge boat tour, Titusville dolphin tour, "
             "manatee tour Brevard County, sunset cruise Cocoa Beach, rocket launch viewing boat, "
-            f"private boat charter Space Coast, Indian River Lagoon wildlife tour, {GEO}"
+            f"private boat charter Space Coast, Indian River Lagoon wildlife tour, {GEO}, {EXTRA}"
         ),
     },
     "tours": {
@@ -56,7 +68,7 @@ PAGES = {
         "seo_keywords": (
             "Space Coast boat tours, dolphin wildlife excursion, sunset cruise Merritt Island, "
             "rocket launch boat tour Cape Canaveral, manatee tour Cocoa Beach, private boat tour Melbourne FL, "
-            f"eco tour Indian River Lagoon, small group boat tour Brevard County, {GEO}"
+            f"eco tour Indian River Lagoon, small group boat tour Brevard County, {GEO}, {EXTRA}"
         ),
     },
     "about": {
@@ -68,7 +80,7 @@ PAGES = {
         "seo_keywords": (
             "about Dolphin Island Tours, local boat tour company Space Coast, Merritt Island captain, "
             "family owned boat tour Cocoa Beach, private charter Brevard County, "
-            f"Indian River Lagoon eco tour, {GEO}"
+            f"Indian River Lagoon eco tour, {GEO}, {EXTRA}"
         ),
     },
     "contact": {
@@ -79,7 +91,7 @@ PAGES = {
         ),
         "seo_keywords": (
             "contact Dolphin Island Tours, book boat tour Merritt Island, private charter inquiry, "
-            f"Cocoa Beach boat tour phone, Space Coast tour booking, {GEO}"
+            f"Cocoa Beach boat tour phone, Space Coast tour booking, {GEO}, {EXTRA}"
         ),
     },
     "reviews": {
@@ -90,7 +102,7 @@ PAGES = {
         ),
         "seo_keywords": (
             "Dolphin Island Tours reviews, best boat tour Cocoa Beach, top dolphin tour Merritt Island, "
-            f"5 star Space Coast boat tour, Melbourne FL boat tour reviews, {GEO}"
+            f"5 star Space Coast boat tour, Melbourne FL boat tour reviews, {GEO}, {EXTRA}"
         ),
     },
     "book": {
@@ -101,7 +113,7 @@ PAGES = {
         ),
         "seo_keywords": (
             "book boat tour Merritt Island, reserve dolphin tour Cocoa Beach, online boat tour booking, "
-            f"private sunset cruise booking, Space Coast tour reservation, {GEO}"
+            f"private sunset cruise booking, Space Coast tour reservation, {GEO}, {EXTRA}"
         ),
     },
     "find_booking": {
@@ -112,7 +124,8 @@ PAGES = {
         ),
         "seo_keywords": (
             "Dolphin Island Tours booking lookup, find my boat tour reservation, "
-            "download tour receipt, Space Coast boat tour confirmation"
+            "download tour receipt, Space Coast boat tour confirmation, manage my booking, "
+            "boat tour ticket lookup, Merritt Island boat tour receipt, retrieve booking by email"
         ),
     },
 }
@@ -127,7 +140,7 @@ TOURS = {
         "seo_keywords": (
             "dolphin tour Merritt Island, dolphin watching Cocoa Beach, manatee tour Florida, "
             "private wildlife boat tour, Indian River Lagoon eco tour, Melbourne FL dolphin tour, "
-            f"Viera Rockledge boat tour, small group dolphin cruise, {GEO}"
+            f"Viera Rockledge boat tour, small group dolphin cruise, {GEO}, {EXTRA}"
         ),
     },
     "sunset-cruise": {
@@ -139,7 +152,7 @@ TOURS = {
         "seo_keywords": (
             "sunset cruise Merritt Island, Cocoa Beach sunset boat tour, private evening cruise Florida, "
             "Indian River Lagoon sunset, romantic boat tour Melbourne FL, Space Coast sunset cruise, "
-            f"proposal boat tour, {GEO}"
+            f"proposal boat tour, {GEO}, {EXTRA}"
         ),
     },
     "rocket-launch-viewing": {
@@ -151,7 +164,7 @@ TOURS = {
         "seo_keywords": (
             "rocket launch boat tour, Cape Canaveral launch viewing, Kennedy Space Center boat tour, "
             "SpaceX launch viewing boat, Merritt Island rocket launch, Cocoa Beach launch tour, "
-            f"Space Coast rocket launch, {GEO}"
+            f"Space Coast rocket launch, {GEO}, {EXTRA}"
         ),
     },
 }
@@ -174,6 +187,6 @@ def tour_seo(tour):
         )[:300],
         "seo_keywords": (
             f"{name}, {name} Merritt Island, {name} Cocoa Beach, private boat tour Space Coast, "
-            f"Brevard County boat tour, {GEO}"
+            f"Brevard County boat tour, {GEO}, {EXTRA}"
         ),
     }
